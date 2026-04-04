@@ -1,0 +1,87 @@
+{"text": "打开客厅灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "客厅", "device_type": "灯"}}
+{"text": "关闭客厅灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "客厅", "device_type": "灯"}}
+{"text": "打开客厅开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "客厅", "device_type": "开关"}}
+{"text": "关闭客厅开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "客厅", "device_type": "开关"}}
+{"text": "打开客厅插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "客厅", "device_type": "插座"}}
+{"text": "关闭客厅插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "客厅", "device_type": "插座"}}
+{"text": "查询客厅空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "客厅", "device_type": "空调"}}
+{"text": "把客厅灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "客厅", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把客厅空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "客厅", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "打开卧室灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "卧室", "device_type": "灯"}}
+{"text": "关闭卧室灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "卧室", "device_type": "灯"}}
+{"text": "打开卧室开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "卧室", "device_type": "开关"}}
+{"text": "关闭卧室开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "卧室", "device_type": "开关"}}
+{"text": "打开卧室插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "卧室", "device_type": "插座"}}
+{"text": "关闭卧室插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "卧室", "device_type": "插座"}}
+{"text": "查询卧室空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "卧室", "device_type": "空调"}}
+{"text": "把卧室灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "卧室", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把卧室空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "卧室", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "打开书房灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "书房", "device_type": "灯"}}
+{"text": "关闭书房灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "书房", "device_type": "灯"}}
+{"text": "打开书房开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "书房", "device_type": "开关"}}
+{"text": "关闭书房开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "书房", "device_type": "开关"}}
+{"text": "打开书房插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "书房", "device_type": "插座"}}
+{"text": "关闭书房插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "书房", "device_type": "插座"}}
+{"text": "查询书房空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "书房", "device_type": "空调"}}
+{"text": "把书房灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "书房", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把书房空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "书房", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "打开厨房灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "厨房", "device_type": "灯"}}
+{"text": "关闭厨房灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "厨房", "device_type": "灯"}}
+{"text": "打开厨房开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "厨房", "device_type": "开关"}}
+{"text": "关闭厨房开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "厨房", "device_type": "开关"}}
+{"text": "打开厨房插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "厨房", "device_type": "插座"}}
+{"text": "关闭厨房插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "厨房", "device_type": "插座"}}
+{"text": "查询厨房空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "厨房", "device_type": "空调"}}
+{"text": "把厨房灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "厨房", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把厨房空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "厨房", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "打开阳台灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "阳台", "device_type": "灯"}}
+{"text": "关闭阳台灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "阳台", "device_type": "灯"}}
+{"text": "打开阳台开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "阳台", "device_type": "开关"}}
+{"text": "关闭阳台开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "阳台", "device_type": "开关"}}
+{"text": "打开阳台插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "阳台", "device_type": "插座"}}
+{"text": "关闭阳台插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "阳台", "device_type": "插座"}}
+{"text": "查询阳台空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "阳台", "device_type": "空调"}}
+{"text": "把阳台灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "阳台", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把阳台空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "阳台", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "打开儿童房灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "儿童房", "device_type": "灯"}}
+{"text": "关闭儿童房灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "儿童房", "device_type": "灯"}}
+{"text": "打开儿童房开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "儿童房", "device_type": "开关"}}
+{"text": "关闭儿童房开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "儿童房", "device_type": "开关"}}
+{"text": "打开儿童房插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "儿童房", "device_type": "插座"}}
+{"text": "关闭儿童房插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "儿童房", "device_type": "插座"}}
+{"text": "查询儿童房空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "儿童房", "device_type": "空调"}}
+{"text": "把儿童房灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "儿童房", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把儿童房空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "儿童房", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "打开主卧灯", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "主卧", "device_type": "灯"}}
+{"text": "关闭主卧灯", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "主卧", "device_type": "灯"}}
+{"text": "打开主卧开关", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "主卧", "device_type": "开关"}}
+{"text": "关闭主卧开关", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "主卧", "device_type": "开关"}}
+{"text": "打开主卧插座", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"location": "主卧", "device_type": "插座"}}
+{"text": "关闭主卧插座", "intent": "CONTROL", "sub_intent": "power_off", "slots": {"location": "主卧", "device_type": "插座"}}
+{"text": "查询主卧空调状态", "intent": "QUERY", "sub_intent": "query_status", "slots": {"location": "主卧", "device_type": "空调"}}
+{"text": "把主卧灯调到50%", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "主卧", "device_type": "灯", "attribute": "亮度", "value": "50"}}
+{"text": "把主卧空调温度调到26度", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"location": "主卧", "device_type": "空调", "attribute": "温度", "value": "26"}}
+{"text": "把前门解锁", "intent": "CONTROL", "sub_intent": "unlock", "slots": {"location": "前门", "device_type": "门锁"}}
+{"text": "打开前门门锁", "intent": "CONTROL", "sub_intent": "unlock", "slots": {"location": "前门", "device_type": "门锁"}}
+{"text": "开锁入户门", "intent": "CONTROL", "sub_intent": "unlock", "slots": {"location": "入户门", "device_type": "门锁"}}
+{"text": "备份一下HA", "intent": "SYSTEM", "sub_intent": "backup", "slots": {}}
+{"text": "执行系统备份", "intent": "SYSTEM", "sub_intent": "backup", "slots": {}}
+{"text": "现在开始备份", "intent": "SYSTEM", "sub_intent": "backup", "slots": {}}
+{"text": "打开回家模式", "intent": "SCENE", "sub_intent": "activate_scene", "slots": {"scene_name": "回家模式"}}
+{"text": "开启观影模式", "intent": "SCENE", "sub_intent": "activate_scene", "slots": {"scene_name": "观影模式"}}
+{"text": "切换到离家模式", "intent": "SCENE", "sub_intent": "activate_scene", "slots": {"scene_name": "离家模式"}}
+{"text": "你好", "intent": "CHITCHAT", "sub_intent": "chitchat", "slots": {}}
+{"text": "谢谢你", "intent": "CHITCHAT", "sub_intent": "chitchat", "slots": {}}
+{"text": "今天天气怎么样", "intent": "CHITCHAT", "sub_intent": "chitchat", "slots": {}}
+{"text": "讲个笑话", "intent": "CHITCHAT", "sub_intent": "chitchat", "slots": {}}
+{"text": "再见", "intent": "CHITCHAT", "sub_intent": "chitchat", "slots": {}}
+{"text": "这个弄一下", "intent": "CHITCHAT", "sub_intent": "unknown", "slots": {}}
+{"text": "帮我处理这个", "intent": "CHITCHAT", "sub_intent": "unknown", "slots": {}}
+{"text": "随便来一个", "intent": "CHITCHAT", "sub_intent": "unknown", "slots": {}}
+{"text": "打开TYZXl鹊起 延长线插座 None", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"device_type": "插座"}}
+{"text": "打开TYZXl鹊起 延长线插座 第2路", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"device_type": "插座"}}
+{"text": "打开TYZXl鹊起 延长线插座 None 第二路", "intent": "CONTROL", "sub_intent": "power_on", "slots": {"device_type": "插座"}}
+{"text": "把客厅灯调亮", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "客厅", "device_type": "灯", "attribute": "亮度"}}
+{"text": "把客厅灯调暗", "intent": "CONTROL", "sub_intent": "adjust_brightness", "slots": {"location": "客厅", "device_type": "灯", "attribute": "亮度"}}
+{"text": "把空调温度调高", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"device_type": "空调", "attribute": "温度"}}
+{"text": "把空调温度调低", "intent": "CONTROL", "sub_intent": "set_temperature", "slots": {"device_type": "空调", "attribute": "温度"}}

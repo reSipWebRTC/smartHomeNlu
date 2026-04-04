@@ -841,6 +841,41 @@ class SmartHomeRuntime:
             },
         )
 
+    def post_api_v1_nlu_parse(self, payload: Dict[str, Any], headers: Dict[str, str] | None = None) -> Dict[str, Any]:
+        trace_id = self._trace_id(headers)
+        text = str(payload.get("text", "")).strip()
+        if not text:
+            return make_response(trace_id, code="BAD_REQUEST", message="missing text")
+
+        session_id = str(payload.get("session_id", "sess_nlu_parse_debug")).strip() or "sess_nlu_parse_debug"
+        user_id = str(payload.get("user_id", "usr_nlu_parse_debug")).strip() or "usr_nlu_parse_debug"
+        threshold_raw = payload.get("threshold")
+        threshold = threshold_raw if isinstance(threshold_raw, dict) else None
+
+        session_state = self.dst.get_session(session_id, user_id)
+        route_result = self.router.route(
+            trace_id=trace_id,
+            text=text,
+            context=session_state.as_dict(),
+            threshold=threshold,
+        )
+        intent = route_result["intent_json"]
+        intent.slots = self.dst.inherit_slots(session_id, user_id, intent.slots)
+
+        return make_response(
+            trace_id,
+            data={
+                "status": "clarify" if route_result["need_clarify"] else "ok",
+                "route": route_result["route"],
+                "model_version": route_result["model_version"],
+                "need_clarify": bool(route_result["need_clarify"]),
+                "threshold": route_result["threshold"],
+                "intent_json": intent.as_dict(),
+                "session_id": session_id,
+                "user_id": user_id,
+            },
+        )
+
     def get_api_v1_entities(
         self,
         *,

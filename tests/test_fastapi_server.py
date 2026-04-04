@@ -221,3 +221,25 @@ def test_http_compare_channels(monkeypatch) -> None:
     assert "response" in report["channels"]["ha_mcp"]
     assert "consistency" in report
     assert isinstance(report["consistency"].get("checks", []), list)
+
+
+def test_http_nlu_parse() -> None:
+    client = _client()
+    resp = client.post(
+        "/api/v1/nlu/parse",
+        json={
+            "session_id": "sess_nlu_parse_001",
+            "user_id": "usr_nlu_parse_001",
+            "text": "打开客厅灯",
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["code"] == "OK"
+    assert body["data"]["status"] in {"ok", "clarify"}
+    assert body["data"]["route"] in {"main", "fallback"}
+    intent_json = body["data"]["intent_json"]
+    assert "intent" in intent_json
+    assert "sub_intent" in intent_json
+    assert "slots" in intent_json
+    assert "confidence" in intent_json

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import os
 from typing import Any, Dict
 
 from .contracts import IntentJson
 from .event_bus import InMemoryEventBus
 from .nlu_fallback import NluFallback
+from .nlu_fallback_qwen import NluFallbackQwen
 from .nlu_main import NluMain
+from .nlu_main_onnx import NluMainOnnx
 
 
 DEFAULT_THRESHOLD = {
@@ -17,9 +20,24 @@ DEFAULT_THRESHOLD = {
 
 class NluRouter:
     def __init__(self, event_bus: InMemoryEventBus) -> None:
-        self.nlu_main = NluMain()
-        self.nlu_fallback = NluFallback()
+        self.nlu_main, self.main_model_version = self._build_main()
+        self.nlu_fallback, self.fallback_model_version = self._build_fallback()
         self.event_bus = event_bus
+
+    @staticmethod
+    def _build_main() -> tuple[Any, str]:
+        provider = (os.getenv("SMARTHOME_NLU_MAIN_PROVIDER") or "rule").strip().lower()
+        if provider in {"onnx", "tinybert", "tinybert_onnx"}:
+            predictor = NluMainOnnx()
+            return predictor, predictor.model_version
+        return NluMain(), "nlu-main-v1"
+
+    @staticmethod
+    def _build_fallback() -> tuple[Any, str]:
+        provider = (os.getenv("SMARTHOME_NLU_FALLBACK_PROVIDER") or "rule").strip().lower()
+        if provider in {"qwen", "qwen_remote", "ollama"}:
+            return NluFallbackQwen(), "nlu-fallback-qwen-v1"
+        return NluFallback(), "nlu-fallback-v1"
 
     def route(
         self,
@@ -38,18 +56,18 @@ class NluRouter:
             route = "main"
             intent_json = main_result
             need_clarify = False
-            model_version = "nlu-main-v1"
+            model_version = self.main_model_version
         elif main_result.confidence >= threshold["fallback_trigger"]:
             route = "main"
             intent_json = main_result
             need_clarify = False
-            model_version = "nlu-main-v1"
+            model_version = self.main_model_version
         else:
             fallback_result = self.nlu_fallback.predict(text, context)
             route = "fallback"
             intent_json = fallback_result
             need_clarify = fallback_result.confidence < threshold["clarify_trigger"]
-            model_version = "nlu-fallback-v1"
+            model_version = self.fallback_model_version
 
         self.event_bus.publish(
             "evt.nlu.routed.v1",

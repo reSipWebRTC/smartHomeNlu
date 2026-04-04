@@ -74,6 +74,12 @@ def create_app(
         result = runtime.post_api_v1_compare_channels(payload, headers=headers)
         return JSONResponse(status_code=_http_status(result["code"]), content=result)
 
+    @app.post("/api/v1/nlu/parse")
+    def post_nlu_parse(payload: Dict[str, Any], x_trace_id: str | None = Header(default=None, alias="X-Trace-Id")) -> JSONResponse:
+        headers = {"X-Trace-Id": x_trace_id} if x_trace_id else None
+        result = runtime.post_api_v1_nlu_parse(payload, headers=headers)
+        return JSONResponse(status_code=_http_status(result["code"]), content=result)
+
     @app.get("/api/v1/health")
     def get_health(x_trace_id: str | None = Header(default=None, alias="X-Trace-Id")) -> JSONResponse:
         headers = {"X-Trace-Id": x_trace_id} if x_trace_id else None

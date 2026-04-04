@@ -15,3 +15,33 @@ __pycache__/
 
 # Local doc exports
 docs/*.zip
+
+# Android build intermediates and Gradle cache
+**/.gradle/
+**/build/
+**/.cxx/
+**/.externalNativeBuild/
+**/captures/
+**/outputs/
+**/intermediates/
+**/generated/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# ML model artifacts
+models/
+model/
+checkpoints/
+*.onnx
+*.tflite
+*.pt
+*.pth
+*.bin
+*.gguf
+*.safetensors
+*.ckpt
+*.pb
+*.h5
