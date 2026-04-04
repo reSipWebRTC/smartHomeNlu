@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  ha-gateway:
+    build: .
+    container_name: ha-gateway
+    ports:
+      - "8124:8124"
+    volumes:
+      - ./config:/config:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import aiohttp; import asyncio; import sys; async def check(): try: async with aiohttp.ClientSession() as session: async with session.get('http://localhost:8124/health') as resp: return resp.status == 200 except: return False sys.exit(0 if asyncio.run(check()) else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Home Assistant for testing
+  home-assistant:
+    image: homeassistant/home-assistant:latest
+    container_name: home-assistant
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./ha-config:/config
+    restart: unless-stopped
+    network_mode: "bridge"

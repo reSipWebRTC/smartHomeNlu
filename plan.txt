@@ -1,0 +1,23 @@
+  - 给出下一阶段优先级：A 生产化运行时（FastAPI+Redis）或 B 先接真实 HA 或 C 先做离线训练链路。
+  - 如果走 B：需要你提供 HA 联调环境（URL、token、可操作测试实体清单、禁操作清单）。
+  - 如果走 A：需要你确认技术选型（FastAPI + Redis + pytest）和部署方式（单机/docker-compose）。
+  - 需要你确认 RBAC 最终规则（哪些角色可执行 unlock/backup/automation）。
+  - 需要你确认审计合规要求（字段留存时长、是否需要落盘到文件/数据库）。
+  
+     如果你要我继续，我可以直接做两件事让第4步“控制类”也稳定通过：
+
+  1. 优化实体检索（避免只用“灯”这种过短关键词导致匹配失败）
+  2. 给 NLU 增加“开关/插座”等设备类型控制支持
+
+
+    codex --dangerously-bypass-approvals-and-sandbox
+    
+    export HOMEASSISTANT_URL=http://127.0.0.1:8123
+    export HOMEASSISTANT_TOKEN=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIzY2RhMGI1YTM2ODA0MGQ1ODJkOTQ4MDM1YWNlZWUxMyIsImlhdCI6MTc3NTI2ODU4NCwiZXhwIjoyMDkwNjI4NTg0fQ.SYqEPUJD1IMIiHw9V9j5IjzcQ9eiRWzwynKATzDrS3M
+  uv run ha-mcp-web
+  
+  export SMARTHOME_HA_CONTROL_MODE=ha_mcp
+  export SMARTHOME_HA_MCP_URL=http://127.0.0.1:8086/mcp
+  uvicorn runtime.server:app --host 0.0.0.0 --port 8000
+
+

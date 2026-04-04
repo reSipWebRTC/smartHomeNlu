@@ -1,0 +1,106 @@
+# Home Assistant Gateway Configuration
+# Copy this file to ~/.ha_gateway/config.yaml and modify as needed
+
+# Home Assistant connection settings
+home_assistant:
+  # URL of your Home Assistant instance
+  url: "http://localhost:8123"
+
+  # Authentication type
+  # Options: long_lived_token, username_password, oauth2
+  auth_type: "long_lived_token"
+
+  # For long_lived_token auth
+  access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIzY2RhMGI1YTM2ODA0MGQ1ODJkOTQ4MDM1YWNlZWUxMyIsImlhdCI6MTc3NTI2ODU4NCwiZXhwIjoyMDkwNjI4NTg0fQ.SYqEPUJD1IMIiHw9V9j5IjzcQ9eiRWzwynKATzDrS3M"
+
+  # For username_password auth (if you prefer this over token)
+  # username: "your_username"
+  # password: "your_password"
+
+  # SSL/TLS settings
+  verify_ssl: false
+  cert_path: null  # Path to SSL certificate file if using custom certs
+
+# Gateway server settings
+gateway:
+  # Host to bind to (0.0.0.0 for all interfaces)
+  host: "0.0.0.0"
+
+  # Port to listen on
+  port: 8124
+
+  # Maximum concurrent connections
+  max_connections: 100
+
+  # Idle timeout for clients (seconds)
+  idle_timeout: 300
+
+# Device filtering settings
+devices:
+  # List of entity IDs to include (glob patterns supported)
+  include: []
+
+  # List of entity IDs to exclude (glob patterns supported)
+  exclude: []
+
+  # Device domains to include
+  include_domains:
+    - "light"
+    - "switch"
+    - "sensor"
+    - "binary_sensor"
+    - "climate"
+    - "cover"
+    - "media_player"
+    - "lock"
+    - "fan"
+    - "humidifier"
+    - "air_purifier"
+    - "input_boolean"
+
+  # Specific entity IDs to exclude
+  exclude_entities:
+    - "sensor.*_battery"
+    - "sensor.*_ignored"
+
+# Cache settings
+cache:
+  # Enable state caching
+  enabled: true
+
+  # Cache TTL (seconds)
+  ttl: 300
+
+  # Maximum cache size
+  max_size: 1000
+
+# Performance tuning
+performance:
+  # Batch size for state updates
+  batch_size: 10
+
+  # Delay between batched updates (seconds)
+  batch_delay: 0.1
+
+  # Reconnection delay (seconds)
+  reconnect_delay: 5
+
+  # Maximum reconnection attempts
+  max_reconnect_attempts: 10
+
+# KNX Integration Settings
+knx:
+  # Enable KNX integration
+  enabled: true
+
+  # KNX Gateway URL for WebSocket connection
+  knx_gateway_url: "ws://localhost:8125/ws"
+
+  # Reconnection settings
+  reconnect_interval: 5
+  max_retries: 10
+  request_timeout: 30
+
+# Logging settings
+log_level: "INFO"
+log_file: null  # Path to log file (null for console only)

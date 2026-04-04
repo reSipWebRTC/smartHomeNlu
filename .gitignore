@@ -1,0 +1,14 @@
+ha-mcp/
+
+# Local runtime/cache artifacts
+.venv/
+.pytest_cache/
+.runtime_local/
+__pycache__/
+
+# Python cache
+*.pyc
+
+# Test/runtime artifacts
+*.log
+.coverage

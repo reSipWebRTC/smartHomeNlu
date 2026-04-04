@@ -1,0 +1,27 @@
+[Unit]
+Description=Home Assistant Gateway
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=homeassistant
+Group=homeassistant
+ExecStart=/usr/bin/python3 -m ha_gateway.server --config /etc/ha-gateway/config.yaml
+WorkingDirectory=/opt/ha-gateway
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/etc/ha-gateway /var/log/ha-gateway
+
+[Install]
+WantedBy=multi-user.target

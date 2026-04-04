@@ -9,7 +9,7 @@
 - 目标：把架构设计拆解为可执行任务包，明确依赖、产出、验收
 
 ## 1. 交付目标
-1. 上线运行时最小闭环：文本指令 -> NLU -> ha-mcp -> 设备执行 -> 回执。
+1. 上线运行时最小闭环：文本指令 -> NLU -> ha_gateway -> 设备执行 -> 回执。
 2. 建立安全基线：RBAC、二次确认、幂等、审计。
 3. 建立离线迭代闭环：难例回流 -> 训练 -> 评测门禁 -> 发布。
 
@@ -19,7 +19,7 @@
 | 架构/Tech Lead | 技术方案、关键评审、风险把控 |
 | 平台工程 | 网关、配置、CI/CD、监控告警 |
 | NLU 工程 | 主路模型、兜底模型、路由策略 |
-| 执行层工程 | entity resolver、policy、executor、ha-mcp adapter |
+| 执行层工程 | entity resolver、policy、executor、ha_gateway adapter |
 | MLOps 工程 | 数据流水线、蒸馏训练、评测门禁、模型注册 |
 | QA | 接口测试、回归测试、端到端验证 |
 
@@ -54,7 +54,7 @@
 | P1-02 | `nlu-main` 推理服务封装 | NLU 工程 | 4 | P0-* | `/internal/v1/nlu/main/predict` |
 | P1-03 | `nlu-router` 路由逻辑实现 | NLU 工程 | 3 | P1-02 | `/internal/v1/nlu/route` |
 | P1-04 | `entity-resolver` 基础映射实现 | 执行层工程 | 4 | P1-01 | `/internal/v1/entity/resolve` |
-| P1-05 | `ha-mcp-adapter` 封装 | 执行层工程 | 3 | P1-04 | `/internal/v1/ha/service-call` |
+| P1-05 | `ha-gateway-adapter` 封装 | 执行层工程 | 3 | P1-04 | `/internal/v1/ha/service-call` |
 | P1-06 | `executor` 最小编排链路 | 执行层工程 | 4 | P1-05 | `/internal/v1/executor/run` |
 | P1-07 | `response-service` 回执模板 | 执行层工程 | 2 | P1-06 | `/internal/v1/response/render` |
 | P1-08 | E2E 场景联调（开关灯） | QA | 3 | P1-01..07 | 最小闭环验收报告 |
@@ -136,7 +136,7 @@
 | 兜底模型延迟波动 | 中 | GPU 常驻优先，CPU 仅兜底，超时降级规则 |
 | 高风险指令误执行 | 高 | 二次确认 + RBAC + 幂等去重 |
 | 数据污染导致评测虚高 | 高 | 固定测试集 + MinHash 去重 + Gate 阻断 |
-| ha-mcp 上游异常 | 中 | 重试矩阵 + 保护模式 + 降级路径 |
+| ha_gateway 上游异常 | 中 | 重试矩阵 + 保护模式 + 降级路径 |
 
 ## 8. 发布清单（Go-Live Checklist）
 1. 接口联调通过（接口清单 100% 覆盖）。

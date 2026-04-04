@@ -56,7 +56,7 @@
 | I-16 | `entity-resolver` | `POST /internal/v1/entity/resolve` | 输出候选实体列表 | 待评审 | 明确 `top_k` 上限（建议 <=5） |  |  |  |
 | I-17 | `policy-engine` | `evaluate/confirm start/commit` | 输出决策、风险、幂等键 | 待评审 |  |  |  |  |
 | I-18 | `executor` | `run/retry` | 执行与重试编排 | 待评审 |  |  |  |  |
-| I-19 | `ha-mcp-adapter` | `tool-call/service-call/entities sync` | 封装 MCP 调用 | 待评审 | 增加上游 4xx/5xx 映射表 |  |  |  |
+| I-19 | `ha-gateway-adapter` | `tool-call/service-call/entities sync` | 封装 MCP 调用 | 待评审 | 增加上游 4xx/5xx 映射表 |  |  |  |
 | I-20 | `response-service` | `POST /internal/v1/response/render` | 渲染 TTS 文案 | 待评审 |  |  |  |  |
 | I-21 | `observability` | `POST /internal/v1/obs/audit` | 审计入库 | 待评审 | 明确字段必填校验策略 |  |  |  |
 

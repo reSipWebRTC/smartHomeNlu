@@ -68,7 +68,7 @@
 | `entity-resolver` | HTTP | 2 | - | `evt.entity.resolved.v1` |
 | `policy-engine` | HTTP | 3 | - | `evt.policy.evaluated.v1` |
 | `executor` | HTTP | 2 | - | `evt.execution.result.v1` |
-| `ha-mcp-adapter` | HTTP | 3 | - | `evt.ha.call.result.v1` |
+| `ha-gateway-adapter` | HTTP | 3 | - | `evt.ha.call.result.v1` |
 | `response-service` | HTTP | 1 | `evt.execution.result.v1` | `evt.response.rendered.v1` |
 | `observability` | HTTP + Stream | 1 | 全量事件 | - |
 | `hard-example-collector` | Stream Worker | 0 | `evt.execution.result.v1` | `evt.data.hard_example.v1` |
@@ -222,7 +222,7 @@
 ### `POST /internal/v1/executor/retry`
 用于按策略重试可重试错误。
 
-## 3.9 `ha-mcp-adapter`
+## 3.9 `ha-gateway-adapter`
 
 ### `POST /internal/v1/ha/tool-call`
 用途：通用工具调用。

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SmartHome Intent Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/web/style.css" />
+  </head>
+  <body>
+    <div class="bg-decor"></div>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Home Assistant NLU Runtime</p>
+          <h1>SmartHome Intent Console</h1>
+          <p class="subtitle">输入自然语言意图，服务端解析并执行 HA 设备控制。</p>
+        </div>
+        <div class="status-wrap">
+          <span id="healthBadge" class="badge badge-muted">检查中...</span>
+          <button id="healthBtn" class="ghost-btn" type="button">刷新健康状态</button>
+        </div>
+      </header>
+
+      <section class="panel command-panel">
+        <div class="panel-title">会话与指令</div>
+        <div class="grid">
+          <label>
+            Session ID
+            <input id="sessionId" type="text" placeholder="sess_web_001" />
+          </label>
+          <label>
+            User ID
+            <input id="userId" type="text" placeholder="usr_web_001" />
+          </label>
+          <label>
+            User Role
+            <select id="userRole">
+              <option value="normal_user">normal_user</option>
+              <option value="admin">admin</option>
+            </select>
+          </label>
+          <label>
+            Top K
+            <input id="topK" type="number" min="1" max="5" value="3" />
+          </label>
+        </div>
+
+        <label class="intent-input">
+          意图文本
+          <textarea id="intentText" rows="4" placeholder="例如：把客厅灯调到60%"></textarea>
+        </label>
+
+        <div class="actions">
+          <button id="submitBtn" class="primary-btn" type="button">发送指令</button>
+          <button id="fillDemoBtn" class="ghost-btn" type="button">填充示例</button>
+          <button id="clearBtn" class="ghost-btn" type="button">清空日志</button>
+        </div>
+      </section>
+
+      <section class="panel device-panel">
+        <div class="panel-title">设备列表</div>
+        <div class="grid">
+          <label>
+            设备搜索
+            <input id="deviceQuery" type="text" placeholder="例如：客厅灯" />
+          </label>
+          <label>
+            设备域
+            <select id="deviceDomain">
+              <option value="">全部</option>
+              <option value="light">light</option>
+              <option value="climate">climate</option>
+              <option value="lock">lock</option>
+              <option value="scene">scene</option>
+            </select>
+          </label>
+          <label>
+            列表上限
+            <input id="deviceLimit" type="number" min="1" max="500" value="200" />
+          </label>
+          <label>
+            操作
+            <button id="deviceRefreshBtn" class="ghost-btn" type="button">刷新设备</button>
+          </label>
+        </div>
+        <ul id="deviceList"></ul>
+      </section>
+
+      <section class="panel template-panel">
+        <div class="panel-title">一键指令模板</div>
+        <p id="templateHint">未选择设备，显示通用模板。</p>
+        <div id="templateButtons" class="actions"></div>
+      </section>
+
+      <section id="confirmPanel" class="panel confirm-panel hidden">
+        <div class="panel-title">高风险确认</div>
+        <p>收到需要确认的操作，确认令牌如下：</p>
+        <code id="confirmToken">-</code>
+        <div class="actions">
+          <button id="confirmAcceptBtn" class="primary-btn" type="button">确认执行</button>
+          <button id="confirmRejectBtn" class="ghost-btn" type="button">取消操作</button>
+        </div>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="panel-title">响应结果</div>
+        <pre id="responseView">等待请求...</pre>
+      </section>
+
+      <section class="panel compare-panel">
+        <div class="panel-title">双通道实时对比（ha_gateway vs ha_mcp）</div>
+        <p class="subtitle">同一条指令分别走两条通道，输出路由、调用链和一致性检查。</p>
+        <div class="actions compare-actions">
+          <button id="compareBtn" class="primary-btn" type="button">执行双通道对比</button>
+          <label class="inline-check">
+            <input id="compareIsolateSession" type="checkbox" checked />
+            隔离对比会话（不污染当前会话）
+          </label>
+        </div>
+        <div id="compareSummary" class="compare-summary">等待对比执行...</div>
+        <pre id="compareView">等待对比结果...</pre>
+      </section>
+
+      <section class="panel timeline-panel">
+        <div class="panel-title">交互日志</div>
+        <ul id="timeline"></ul>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-title">会话历史（服务端持久化）</div>
+        <div class="actions">
+          <button id="historyRefreshBtn" class="ghost-btn" type="button">刷新历史</button>
+          <button id="historyClearBtn" class="ghost-btn" type="button">清空当前会话历史</button>
+        </div>
+        <ul id="historyList"></ul>
+      </section>
+    </main>
+
+    <script src="/web/app.js" defer></script>
+  </body>
+</html>
