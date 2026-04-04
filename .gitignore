@@ -12,3 +12,6 @@ __pycache__/
 # Test/runtime artifacts
 *.log
 .coverage
+
+# Local doc exports
+docs/*.zip

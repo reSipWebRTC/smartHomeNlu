@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- 允许HTTP明文请求（仅用于开发/局域网） -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- 对特定域名允许HTTP -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain> <!-- Android模拟器访问主机 -->
+        <domain includeSubdomains="true">192.168.3.44</domain>
+        <domain includeSubdomains="true">192.168.3.145</domain>
+        <domain includeSubdomains="true">192.168</domain>
+    </domain-config>
+</network-security-config>

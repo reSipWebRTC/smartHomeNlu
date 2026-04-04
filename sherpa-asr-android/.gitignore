@@ -1,0 +1,25 @@
+# Android/Gradle build artifacts
+.gradle/
+.idea/
+.kotlin/
+build/
+**/build/
+local.properties
+*.iml
+.externalNativeBuild/
+.cxx/
+captures/
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+
+# Downloaded/offline model assets (keep out of VCS)
+app/src/main/assets/asr/
+app/src/main/assets/vad/
+app/src/main/assets/tts/
+
+# Large helper archives
+app/libs/*.zip
+app/src/main/java/**/*.zip
