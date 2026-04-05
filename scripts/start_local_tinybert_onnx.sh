@@ -14,6 +14,11 @@ export SMARTHOME_NLU_FALLBACK_PROVIDER="qwen_remote"
 export SMARTHOME_NLU_FALLBACK_URL="${SMARTHOME_NLU_FALLBACK_URL:-http://192.168.3.44:11434/api/chat}"
 export SMARTHOME_NLU_FALLBACK_MODEL="${SMARTHOME_NLU_FALLBACK_MODEL:-qwen2.5:1.5b}"
 
+if [[ -z "${SMARTHOME_HA_GATEWAY_URL:-}" && -z "${SMARTHOME_HA_MCP_URL:-}" ]]; then
+  echo "[WARN] HA channel env not configured; device discovery will run in stub mode."
+  echo "[WARN] Set SMARTHOME_HA_GATEWAY_URL (recommended) or SMARTHOME_HA_MCP_URL before starting."
+fi
+
 cd "${ROOT_DIR}"
 ./run_local.sh down
 ./run_local.sh up

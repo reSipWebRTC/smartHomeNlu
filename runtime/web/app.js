@@ -22,6 +22,7 @@ const dom = {
   deviceQuery: document.getElementById("deviceQuery"),
   deviceDomain: document.getElementById("deviceDomain"),
   deviceLimit: document.getElementById("deviceLimit"),
+  deviceStatus: document.getElementById("deviceStatus"),
   deviceRefreshBtn: document.getElementById("deviceRefreshBtn"),
   deviceList: document.getElementById("deviceList"),
   templateHint: document.getElementById("templateHint"),
@@ -292,18 +293,31 @@ async function loadDevices() {
     const { data } = await requestJson(`/api/v1/entities?${params.toString()}`);
     if (data.code !== "OK") {
       pushTimeline("devices", `load failed: ${data.code}`);
+      setText(dom.deviceStatus, `设备发现状态：请求失败（${data.code}）`);
       return;
     }
+
+    const mode = data?.data?.mode || "unknown";
+    const warning = data?.data?.diagnostics?.warning || "";
+    const count = Number(data?.data?.count || 0);
+    setText(dom.deviceStatus, `设备发现状态：mode=${mode}，count=${count}${warning ? `，${warning}` : ""}`);
 
     state.devices = Array.isArray(data?.data?.items) ? data.data.items : [];
     if (!state.devices.find((item) => item.entity_id === state.selectedDeviceId)) {
       state.selectedDeviceId = state.devices[0]?.entity_id || "";
     }
 
+    if (mode === "stub") {
+      pushTimeline("devices", "当前为 stub 模式，请配置 HA 通道环境变量后重启运行时");
+    } else if (!state.devices.length) {
+      pushTimeline("devices", "上游 HA 未返回设备，请检查通道连通性与权限");
+    }
+
     renderDeviceList();
     renderTemplates();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    setText(dom.deviceStatus, `设备发现状态：异常（${message}）`);
     pushTimeline("devices-error", message);
   }
 }

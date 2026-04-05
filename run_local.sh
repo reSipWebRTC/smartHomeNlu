@@ -113,6 +113,27 @@ start_runtime() {
   echo "[INFO] Starting Runtime on ${HOST}:${APP_PORT}"
   local -a env_args
   env_args=("SMARTHOME_REDIS_URL=${SMARTHOME_REDIS_URL:-$REDIS_URL}")
+
+  # Ensure local HA/MCP endpoints are not routed through global HTTP proxies.
+  local no_proxy_value="${NO_PROXY:-${no_proxy:-}}"
+  if [[ -z "${no_proxy_value}" ]]; then
+    no_proxy_value="127.0.0.1,localhost,::1"
+  else
+    case ",${no_proxy_value}," in
+      *,127.0.0.1,* ) ;;
+      * ) no_proxy_value="${no_proxy_value},127.0.0.1" ;;
+    esac
+    case ",${no_proxy_value}," in
+      *,localhost,* ) ;;
+      * ) no_proxy_value="${no_proxy_value},localhost" ;;
+    esac
+    case ",${no_proxy_value}," in
+      *,::1,* ) ;;
+      * ) no_proxy_value="${no_proxy_value},::1" ;;
+    esac
+  fi
+  env_args+=("NO_PROXY=${no_proxy_value}" "no_proxy=${no_proxy_value}")
+
   if [[ -n "${SMARTHOME_HA_CONTROL_MODE:-}" ]]; then
     env_args+=("SMARTHOME_HA_CONTROL_MODE=${SMARTHOME_HA_CONTROL_MODE}")
   fi

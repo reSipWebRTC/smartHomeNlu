@@ -1,0 +1,35 @@
+{
+  "entity_overrides": {
+    "switch.tyzxlque_qi_yan_chang_xian_cha_zuo_none": {
+      "name": "延长线插座",
+      "aliases": [
+        "一号插座",
+        "第一路插座",
+        "插座1"
+      ]
+    },
+    "switch.tyzxlque_qi_yan_chang_xian_cha_zuo_none_2": {
+      "name": "延长线插座",
+      "aliases": [
+        "二号插座",
+        "第二路插座",
+        "插座2"
+      ]
+    },
+    "switch.tyzxlque_qi_yan_chang_xian_cha_zuo_none_3": {
+      "name": "延长线插座",
+      "aliases": [
+        "三号插座",
+        "第三路插座",
+        "插座3"
+      ]
+    },
+    "switch.cuco_v3_359a_switch": {
+      "name": "米家智能插座",
+      "aliases": [
+        "米家插座",
+        "cuco 插座"
+      ]
+    }
+  }
+}

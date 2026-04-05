@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List
 
 from .contracts import EntityCandidate
+from .entity_name_utils import build_entity_aliases, clean_entity_name
 from .event_bus import InMemoryEventBus
 
 
@@ -27,10 +28,47 @@ DEVICE_TYPE_TERMS = {
 class EntityResolver:
     def __init__(self, event_bus: InMemoryEventBus, entities: List[Dict[str, Any]] | None = None) -> None:
         self.event_bus = event_bus
-        self.entities = entities or []
+        self.entities = self._prepare_entities(entities or [])
 
     def reindex(self, entities: List[Dict[str, Any]]) -> None:
-        self.entities = list(entities)
+        self.entities = self._prepare_entities(entities)
+
+    @staticmethod
+    def _prepare_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        prepared: List[Dict[str, Any]] = []
+        for raw in entities:
+            if not isinstance(raw, dict):
+                continue
+            entity_id = str(raw.get("entity_id", "")).strip()
+            if not entity_id:
+                continue
+            clean_name = clean_entity_name(str(raw.get("name", "")), entity_id)
+            clean_area = clean_entity_name(str(raw.get("area", "")))
+            aliases = build_entity_aliases(
+                name=clean_name,
+                entity_id=entity_id,
+                area=clean_area,
+                device_type_terms=DEVICE_TYPE_TERMS,
+            )
+            raw_aliases = raw.get("aliases")
+            if isinstance(raw_aliases, list):
+                for alias in raw_aliases:
+                    alias_text = clean_entity_name(str(alias), entity_id)
+                    if alias_text and alias_text != clean_name:
+                        aliases.append(alias_text)
+            aliases = sorted(set(aliases))
+            search_text = f"{clean_name} {clean_area} {' '.join(aliases)} {entity_id}".lower()
+            prepared.append(
+                {
+                    "entity_id": entity_id,
+                    "name": clean_name,
+                    "area": clean_area,
+                    "state": raw.get("state"),
+                    "aliases": aliases,
+                    "_search_text": search_text,
+                }
+            )
+        return prepared
 
     def resolve(
         self,
@@ -70,7 +108,7 @@ class EntityResolver:
                 continue
             entity_name = str(entity.get("name", ""))
             entity_area = str(entity.get("area", ""))
-            haystack = f"{entity_name}{entity_area}{entity_id}".lower()
+            haystack = str(entity.get("_search_text") or f"{entity_name} {entity_area} {entity_id}").lower()
 
             score = SequenceMatcher(None, query_norm, haystack).ratio() if query_norm else 0.0
             if query_norm and query_norm in haystack:

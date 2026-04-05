@@ -6,7 +6,9 @@ import time
 from typing import Any, Dict, List, Tuple
 
 from .contracts import EntityCandidate, PolicyDecision, make_response
+from .entity_alias_store import EntityAliasStore
 from .dst_service import DstService
+from .entity_name_utils import build_entity_aliases, clean_entity_name, extract_entity_index, normalize_entity_name
 from .entity_resolver import DEVICE_DOMAIN_HINT, EntityResolver
 from .event_bus import InMemoryEventBus
 from .executor import Executor
@@ -162,11 +164,13 @@ class SmartHomeRuntime:
             self.adapter = adapter
         else:
             self.adapter = self._build_env_adapter()
+        self.entity_alias_store = EntityAliasStore()
         self.state_backend = RedisStateBackend(redis_url=redis_url, redis_client=redis_client)
         self.dst = DstService(state_backend=self.state_backend)
         self.router = NluRouter(self.event_bus)
         remote_like_modes = {"ha_gateway", "ha_mcp", "remote_mcp"}
         initial_entities = [] if self.adapter.mode in remote_like_modes else self.adapter.get_all_entities()
+        initial_entities = self._apply_alias_overrides(initial_entities)
         self.entity_resolver = EntityResolver(self.event_bus, entities=initial_entities)
         self.policy_engine = PolicyEngine(self.event_bus, state_backend=self.state_backend)
         self.executor = Executor(
@@ -197,6 +201,14 @@ class SmartHomeRuntime:
             return int(raw)
         except ValueError:
             return default
+
+    def _apply_alias_overrides(self, entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        patched: List[Dict[str, Any]] = []
+        for item in entities:
+            if not isinstance(item, dict):
+                continue
+            patched.append(self.entity_alias_store.apply(item))
+        return patched
 
     @classmethod
     def _is_default_ha_entity(cls, entity_id: str) -> bool:
@@ -296,6 +308,7 @@ class SmartHomeRuntime:
             if query:
                 try:
                     remote_items = self.adapter.search_entities(query=query, domain=domain_hint, limit=100)
+                    remote_items = self._apply_alias_overrides(remote_items)
                 except Exception:
                     remote_items = []
                 for item in remote_items:
@@ -495,6 +508,7 @@ class SmartHomeRuntime:
                     domain=remote_domain_hint,
                     limit=payload.get("top_k", 3),
                 )
+                remote_entities = self._apply_alias_overrides(remote_entities)
                 candidates = [
                     EntityCandidate(
                         entity_id=str(entity.get("entity_id", "")),
@@ -900,6 +914,7 @@ class SmartHomeRuntime:
                 entities = self.adapter.get_all_entities()
             if domain:
                 entities = [item for item in entities if str(item.get("entity_id", "")).startswith(f"{domain}.")]
+        entities = self._apply_alias_overrides(entities)
 
         if hide_default:
             entities = [item for item in entities if not self._is_default_ha_entity(str(item.get("entity_id", "")))]
@@ -907,22 +922,101 @@ class SmartHomeRuntime:
         total = len(entities)
         entities = entities[:limit]
 
+        diagnostics: Dict[str, Any] = {"mode": self.adapter.mode}
+        if self.adapter.mode == "stub":
+            diagnostics["warning"] = (
+                "device discovery is running in stub mode; configure "
+                "SMARTHOME_HA_GATEWAY_URL or SMARTHOME_HA_MCP_URL to discover real devices"
+            )
+        elif self.adapter.mode == "ha_mcp" and total == 0:
+            mcp_url = str(getattr(self.adapter, "_mcp_url", "") or "").strip()
+            if not mcp_url:
+                diagnostics["warning"] = "SMARTHOME_HA_MCP_URL is not configured"
+            else:
+                try:
+                    import mcp  # type: ignore  # noqa: F401
+                except Exception:
+                    diagnostics["warning"] = "python package 'mcp' is not installed in current runtime environment"
+                else:
+                    if "/private_" not in mcp_url:
+                        diagnostics["warning"] = (
+                            "MCP URL may be incomplete; use the full URL including /private_... key from HA-MCP"
+                        )
+                    else:
+                        diagnostics["warning"] = "no entities discovered from upstream Home Assistant channel"
+            probe = getattr(self.adapter, "_remote_tool_call", None)
+            if callable(probe):
+                try:
+                    probe_result = probe(
+                        "ha_search_entities",
+                        {"query": "", "domain_filter": str(domain or "light"), "limit": 1},
+                    )
+                    if isinstance(probe_result, dict) and not probe_result.get("success"):
+                        diagnostics["upstream_error"] = str(probe_result.get("error", "") or "").strip()
+                        diagnostics["upstream_error_code"] = str(probe_result.get("error_code", "") or "").strip()
+                except Exception:
+                    pass
+        elif self.adapter.mode == "ha_gateway" and total == 0:
+            diagnostics["warning"] = "no entities discovered from upstream Home Assistant channel"
+            probe = getattr(self.adapter, "_gateway_call", None)
+            if callable(probe):
+                try:
+                    probe_result = probe("discover", {})
+                    if isinstance(probe_result, dict) and not probe_result.get("success"):
+                        diagnostics["upstream_error"] = str(probe_result.get("error", "") or "").strip()
+                        diagnostics["upstream_error_code"] = str(probe_result.get("error_code", "") or "").strip()
+                except Exception:
+                    pass
+        elif total == 0:
+            diagnostics["warning"] = "no entities discovered from upstream Home Assistant channel"
+
         normalized: List[Dict[str, Any]] = []
+        name_groups: Dict[str, List[Dict[str, Any]]] = {}
         for item in entities:
             if not isinstance(item, dict):
                 continue
             entity_id = str(item.get("entity_id", ""))
             if not entity_id:
                 continue
-            normalized.append(
-                {
-                    "entity_id": entity_id,
-                    "name": str(item.get("name", entity_id)),
-                    "area": str(item.get("area", "")),
-                    "state": item.get("state"),
-                    "score": item.get("score"),
-                }
-            )
+
+            clean_name = clean_entity_name(str(item.get("name", "")), entity_id)
+            clean_area = clean_entity_name(str(item.get("area", "")))
+            aliases_raw = item.get("aliases")
+            if isinstance(aliases_raw, list):
+                aliases = [clean_entity_name(str(alias)) for alias in aliases_raw if str(alias).strip()]
+            else:
+                aliases = build_entity_aliases(name=clean_name, entity_id=entity_id, area=clean_area)
+            aliases = sorted({alias for alias in aliases if alias and alias != clean_name})
+
+            entry: Dict[str, Any] = {
+                "entity_id": entity_id,
+                "name": clean_name,
+                "area": clean_area,
+                "state": item.get("state"),
+                "score": item.get("score"),
+                "aliases": aliases,
+            }
+            normalized.append(entry)
+
+            key = normalize_entity_name(clean_name)
+            if key:
+                name_groups.setdefault(key, []).append(entry)
+
+        for _, group in name_groups.items():
+            if len(group) <= 1:
+                continue
+            for order, entry in enumerate(sorted(group, key=lambda x: str(x.get("entity_id", ""))), start=1):
+                base_name = str(entry.get("name", "")).strip()
+                if not base_name:
+                    continue
+                route_index = extract_entity_index(str(entry.get("entity_id", ""))) or order
+                entry["name"] = f"{base_name} 第{route_index}路"
+
+                dedupe_aliases = list(entry.get("aliases", []))
+                dedupe_aliases.extend([base_name, f"第{route_index}路{base_name}", f"{base_name}第{route_index}路"])
+                entry["aliases"] = sorted(
+                    {clean_entity_name(str(alias)) for alias in dedupe_aliases if str(alias).strip()}
+                )
 
         return make_response(
             trace_id,
@@ -932,6 +1026,7 @@ class SmartHomeRuntime:
                 "total": total,
                 "has_more": total > len(normalized),
                 "hide_default": hide_default,
+                "diagnostics": diagnostics,
                 "items": normalized,
             },
         )

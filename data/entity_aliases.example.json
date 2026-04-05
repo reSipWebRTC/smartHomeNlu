@@ -1,0 +1,20 @@
+{
+  "entity_overrides": {
+    "switch.tyzxlque_qi_yan_chang_xian_cha_zuo_none": {
+      "name": "客厅排插",
+      "aliases": [
+        "客厅插座一号",
+        "一号插座",
+        "排插1"
+      ]
+    },
+    "switch.tyzxlque_qi_yan_chang_xian_cha_zuo_none_2": {
+      "name": "客厅排插",
+      "aliases": [
+        "客厅插座二号",
+        "二号插座",
+        "排插2"
+      ]
+    }
+  }
+}
