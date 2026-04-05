@@ -116,3 +116,35 @@ SMARTHOME_HA_GATEWAY_URL=ws://127.0.0.1:8124/ws \
 LIVE_HA_GATEWAY_SWITCH_ENTITY_ID=switch.your_test_switch \
 python3 -m pytest -q tests/test_live_ha_gateway_smoke.py
 ```
+
+
+ 按这组命令跑就行：
+
+  # 终端1：启动 ha-mcp-web
+  cd /home/david/Work/smartHomeNlu/ha-mcp
+  export HOMEASSISTANT_URL=http://127.0.0.1:8123
+  export HOMEASSISTANT_TOKEN='你的HA长效Token'
+  unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+  export NO_PROXY=127.0.0.1,localhost,::1
+  uv run ha-mcp-web
+
+  # 终端2：启动 SmartHome runtime（走 ha_mcp）
+  cd /home/david/Work/smartHomeNlu
+  source .venv/bin/activate
+  pip install -r requirements.txt
+
+  export SMARTHOME_HA_CONTROL_MODE=ha_mcp
+  export SMARTHOME_HA_MCP_URL=http://127.0.0.1:8086/mcp
+  unset HTTP_PROXY HTTPS_PROXY ALL_PROXY
+  export NO_PROXY=127.0.0.1,localhost,::1
+
+  bash scripts/start_local_tinybert_onnx.sh
+
+  验证：
+
+  curl -sS http://127.0.0.1:8000/api/v1/entities?limit=20
+  curl -sS 'http://127.0.0.1:8000/api/v1/entities?domain=switch&limit=50'
+  curl -sS -X POST 'http://127.0.0.1:8000/api/v1/command' \
+    -H 'Content-Type: application/json' \
+    -d '{"session_id":"sess_test_01","user_id":"usr_test_01","text":"打开插座"}'
+
