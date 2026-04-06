@@ -5,7 +5,9 @@ import re
 import time
 from typing import Any, Dict, List, Tuple
 
-from .contracts import EntityCandidate, PolicyDecision, make_response
+from .contracts import EntityCandidate, IntentJson, PolicyDecision, make_response
+from .debug_log import compact, get_logger
+from .nlu_canonicalizer import canonicalize_intent
 from .entity_alias_store import EntityAliasStore
 from .dst_service import DstService
 from .entity_name_utils import build_entity_aliases, clean_entity_name, extract_entity_index, normalize_entity_name
@@ -24,6 +26,8 @@ from .utils import new_id
 
 
 class SmartHomeRuntime:
+    _logger = get_logger("api")
+
     DEFAULT_HA_BUILTIN_ENTITIES = {
         "sun.sun",
         "sensor.date",
@@ -388,6 +392,221 @@ class SmartHomeRuntime:
             entry["metadata"] = dict(metadata)
         self.state_backend.append_history(session_id, entry)
 
+    def _with_nlu(
+        self,
+        reply: Dict[str, Any],
+        route_result: Dict[str, Any],
+        intent: Any,
+    ) -> Dict[str, Any]:
+        reply["nlu"] = {
+            "route": route_result.get("route"),
+            "route_stage": route_result.get("route_stage", ""),
+            "model_version": route_result.get("model_version", ""),
+            "intent": intent.intent,
+            "sub_intent": intent.sub_intent,
+            "slots": intent.slots,
+            "confidence": float(intent.confidence),
+        }
+        return reply
+
+    @staticmethod
+    def _describe_sub_command(sub_intent: IntentJson) -> str:
+        action_map = {
+            "power_on": "打开",
+            "power_off": "关闭",
+            "set_temperature": "设置温度",
+            "adjust_brightness": "调节亮度",
+            "query_status": "查询状态",
+            "activate_scene": "激活场景",
+        }
+        action = action_map.get(sub_intent.sub_intent, "")
+        location = str(sub_intent.slots.get("location", ""))
+        device = str(sub_intent.slots.get("device_type", ""))
+        value = sub_intent.slots.get("value")
+        parts = [action, location, device]
+        if value is not None:
+            parts.append(str(value))
+            unit = str(sub_intent.slots.get("value_unit", ""))
+            if unit:
+                parts.append(unit)
+        return "".join(p for p in parts if p) or sub_intent.sub_intent
+
+    def _process_multi_commands(
+        self,
+        *,
+        trace_id: str,
+        session_id: str,
+        user_id: str,
+        user_role: str,
+        text: str,
+        route_result: Dict[str, Any],
+        primary_intent: IntentJson,
+    ) -> Dict[str, Any]:
+        multi_commands = primary_intent.multi_commands or []
+        items: List[Dict[str, Any]] = []
+        success_count = 0
+
+        for idx, cmd_dict in enumerate(multi_commands):
+            sub = IntentJson(
+                intent=cmd_dict.get("intent", "CONTROL"),
+                sub_intent=cmd_dict.get("sub_intent", "unknown"),
+                slots=cmd_dict.get("slots", {}),
+                confidence=cmd_dict.get("confidence", 0.5),
+            )
+            sub = canonicalize_intent(sub)
+
+            # ── entity resolution ──
+            resolved_entity_id = sub.slots.get("entity_id")
+            if sub.intent in {"CONTROL", "QUERY", "SCENE"} and not resolved_entity_id:
+                domain_hint = "scene" if sub.intent == "SCENE" else None
+                candidates = self.entity_resolver.resolve(
+                    trace_id=trace_id,
+                    slots=sub.slots,
+                    domain_hint=domain_hint,
+                    top_k=3,
+                )
+                if not candidates and self.adapter.mode in {"ha_gateway", "ha_mcp", "remote_mcp"}:
+                    remote_domain_hint = domain_hint or DEVICE_DOMAIN_HINT.get(
+                        str(sub.slots.get("device_type", "")).strip()
+                    )
+                    query = f"{sub.slots.get('location', '')}{sub.slots.get('device_type', '')}".strip() or text
+                    try:
+                        remote_entities = self.adapter.search_entities(
+                            query=query, domain=remote_domain_hint, limit=3,
+                        )
+                    except Exception:
+                        remote_entities = []
+                    remote_entities = self._apply_alias_overrides(remote_entities)
+                    candidates = [
+                        EntityCandidate(
+                            entity_id=str(e.get("entity_id", "")),
+                            score=float(e.get("score", 0.0)),
+                            name=str(e.get("name", e.get("entity_id", ""))),
+                            area=str(e.get("area", "")),
+                        )
+                        for e in remote_entities
+                        if e.get("entity_id")
+                    ]
+                    if not candidates and remote_domain_hint:
+                        try:
+                            retry_entities = self.adapter.search_entities(
+                                query=query if len(query) >= 2 else text,
+                                domain=None, limit=3,
+                            )
+                        except Exception:
+                            retry_entities = []
+                        retry_entities = self._apply_alias_overrides(retry_entities)
+                        candidates = [
+                            EntityCandidate(
+                                entity_id=str(e.get("entity_id", "")),
+                                score=float(e.get("score", 0.0)),
+                                name=str(e.get("name", e.get("entity_id", ""))),
+                                area=str(e.get("area", "")),
+                            )
+                            for e in retry_entities
+                            if e.get("entity_id")
+                        ]
+
+                if not candidates and sub.intent != "SYSTEM":
+                    items.append({
+                        "index": idx,
+                        "text": self._describe_sub_command(sub),
+                        "code": "ENTITY_NOT_FOUND",
+                        "status": "entity_not_found",
+                        "entity_id": None,
+                        "nlu": {
+                            "intent": sub.intent,
+                            "sub_intent": sub.sub_intent,
+                            "slots": sub.slots,
+                            "confidence": float(sub.confidence),
+                        },
+                    })
+                    continue
+
+                if candidates:
+                    resolved_entity_id = candidates[0].entity_id
+                    sub.slots["entity_id"] = resolved_entity_id
+
+            # ── policy + execute ──
+            policy = self.policy_engine.evaluate(
+                trace_id=trace_id,
+                user_id=user_id,
+                user_role=user_role,
+                intent_json=sub.as_dict(),
+            )
+
+            if policy.decision == "deny":
+                items.append({
+                    "index": idx,
+                    "text": self._describe_sub_command(sub),
+                    "code": "FORBIDDEN",
+                    "status": "denied",
+                    "entity_id": resolved_entity_id,
+                    "nlu": {
+                        "intent": sub.intent,
+                        "sub_intent": sub.sub_intent,
+                        "slots": sub.slots,
+                        "confidence": float(sub.confidence),
+                    },
+                })
+                continue
+
+            exec_out = self.executor.run(
+                trace_id=trace_id,
+                session_id=session_id,
+                user_id=user_id,
+                intent_json=sub.as_dict(),
+                policy=policy,
+                resolved_entity_id=resolved_entity_id,
+                confirmed=True,
+            )
+
+            exec_status = exec_out["execution_result"].status
+            if exec_status == "success":
+                success_count += 1
+            else:
+                self.hard_example_collector.collect_execution_failure(
+                    trace_id=trace_id,
+                    session_id=session_id,
+                    user_id=user_id,
+                    text=text,
+                    error_code=str(exec_out["execution_result"].error_code or exec_out["code"]),
+                    intent_json=sub.as_dict(),
+                    tool_name=exec_out["execution_result"].tool_name,
+                    entity_id=resolved_entity_id,
+                )
+
+            items.append({
+                "index": idx,
+                "text": self._describe_sub_command(sub),
+                "code": exec_out["code"],
+                "status": exec_status,
+                "entity_id": resolved_entity_id,
+                "nlu": {
+                    "intent": sub.intent,
+                    "sub_intent": sub.sub_intent,
+                    "slots": sub.slots,
+                    "confidence": float(sub.confidence),
+                },
+            })
+
+        total = len(items)
+        ok = sum(1 for it in items if it.get("status") == "success")
+        if ok == total:
+            reply_text = f"已处理{total}条指令，全部成功。"
+        else:
+            reply_text = f"已处理{total}条指令，成功{ok}条。"
+
+        reply: Dict[str, Any] = {
+            "status": "ok",
+            "reply_text": reply_text,
+            "tts_text": reply_text,
+            "intent": primary_intent.intent,
+            "sub_intent": "multi_command",
+            "items": items,
+        }
+        return reply
+
     def post_api_v1_command(self, payload: Dict[str, Any], headers: Dict[str, str] | None = None) -> Dict[str, Any]:
         trace_id = self._trace_id(headers)
 
@@ -422,6 +641,18 @@ class SmartHomeRuntime:
         intent.slots = merged_slots
         threshold = route_result["threshold"]
 
+        self._logger.info(
+            "command semantic trace_id=%s route=%s/%s intent=%s/%s conf=%.3f slots=%s entity=%s",
+            trace_id,
+            route_result.get("route"),
+            route_result.get("route_stage", ""),
+            intent.intent,
+            intent.sub_intent,
+            float(intent.confidence),
+            compact(intent.slots, max_len=400),
+            intent.slots.get("entity_id"),
+        )
+
         if route_result["route"] == "main":
             if threshold["fallback_trigger"] <= intent.confidence < threshold["main_pass"]:
                 self.hard_example_collector.collect_low_confidence(
@@ -455,6 +686,7 @@ class SmartHomeRuntime:
                 execution_result=None,
                 clarify_text=clarify,
             )
+            reply = self._with_nlu(reply, route_result, intent)
             result = make_response(trace_id, data=reply)
             self._append_history(
                 session_id=session_id,
@@ -476,6 +708,7 @@ class SmartHomeRuntime:
                 "intent": intent.intent,
                 "sub_intent": intent.sub_intent,
             }
+            reply = self._with_nlu(reply, route_result, intent)
             result = make_response(trace_id, data=reply)
             self._append_history(
                 session_id=session_id,
@@ -486,6 +719,31 @@ class SmartHomeRuntime:
                 reply_text=str(reply.get("reply_text", "")),
                 intent=intent.intent,
                 sub_intent=intent.sub_intent,
+            )
+            return result
+
+        # ── multi-command early return ──
+        if intent.multi_commands and len(intent.multi_commands) > 1:
+            reply = self._process_multi_commands(
+                trace_id=trace_id,
+                session_id=session_id,
+                user_id=user_id,
+                user_role=user_role,
+                text=text,
+                route_result=route_result,
+                primary_intent=intent,
+            )
+            reply = self._with_nlu(reply, route_result, intent)
+            result = make_response(trace_id, data=reply)
+            self._append_history(
+                session_id=session_id,
+                user_id=user_id,
+                action="command",
+                code=str(result["code"]),
+                request_text=text,
+                reply_text=str(reply.get("reply_text", "")),
+                intent=intent.intent,
+                sub_intent="multi_command",
             )
             return result
 
@@ -519,6 +777,23 @@ class SmartHomeRuntime:
                     for entity in remote_entities
                     if entity.get("entity_id")
                 ]
+                if not candidates and remote_domain_hint:
+                    retry_entities = self.adapter.search_entities(
+                        query=query if len(query) >= 2 else text,
+                        domain=None,
+                        limit=payload.get("top_k", 3),
+                    )
+                    retry_entities = self._apply_alias_overrides(retry_entities)
+                    candidates = [
+                        EntityCandidate(
+                            entity_id=str(entity.get("entity_id", "")),
+                            score=float(entity.get("score", 0.0)),
+                            name=str(entity.get("name", entity.get("entity_id", ""))),
+                            area=str(entity.get("area", "")),
+                        )
+                        for entity in retry_entities
+                        if entity.get("entity_id")
+                    ]
             if not candidates and intent.intent != "SYSTEM":
                 self.hard_example_collector.collect_execution_failure(
                     trace_id=trace_id,
@@ -535,6 +810,7 @@ class SmartHomeRuntime:
                     execution_result=None,
                     clarify_text="没有找到对应设备，请确认设备名称。",
                 )
+                reply = self._with_nlu(reply, route_result, intent)
                 result = make_response(trace_id, code="ENTITY_NOT_FOUND", message="entity not found", data=reply)
                 self._append_history(
                     session_id=session_id,
@@ -559,6 +835,7 @@ class SmartHomeRuntime:
                         execution_result=None,
                         clarify_text="检测到多个同名设备，请补充“第1路/第2路/第3路”后重试。",
                     )
+                    reply = self._with_nlu(reply, route_result, intent)
                     result = make_response(trace_id, data=reply)
                     self._append_history(
                         session_id=session_id,
@@ -592,6 +869,7 @@ class SmartHomeRuntime:
                 confirmed=False,
             )
             reply = self.response_service.render(intent_json=intent.as_dict(), execution_result=exec_out["execution_result"])
+            reply = self._with_nlu(reply, route_result, intent)
             result = make_response(trace_id, code=exec_out["code"], message="permission denied", data=reply)
             self._append_history(
                 session_id=session_id,
@@ -632,6 +910,7 @@ class SmartHomeRuntime:
                 "confirm_token": confirm["confirm_token"],
                 "expires_in_sec": confirm["expires_in_sec"],
             }
+            data = self._with_nlu(data, route_result, intent)
             result = make_response(
                 trace_id,
                 code="POLICY_CONFIRM_REQUIRED",
@@ -661,6 +940,7 @@ class SmartHomeRuntime:
             confirmed=True,
         )
         reply = self.response_service.render(intent_json=intent.as_dict(), execution_result=exec_out["execution_result"])
+        reply = self._with_nlu(reply, route_result, intent)
 
         if exec_out["execution_result"].status == "success":
             self.dst.mark_success_turn(

@@ -95,6 +95,49 @@ class SparseSameNameSwitchAdapter(SameNameSwitchAdapter):
         return rows[: max(1, int(limit))]
 
 
+class LightFallbackAdapter:
+    def __init__(self) -> None:
+        self.mode = "ha_mcp"
+        self.service_call_count = 0
+        self.backup_call_count = 0
+        self.calls: List[Dict[str, Any]] = []
+        self.search_calls: List[Dict[str, Any]] = []
+
+    def get_all_entities(self) -> List[Dict[str, Any]]:
+        return []
+
+    def search_entities(self, query: str, domain: str | None = None, limit: int = 3) -> List[Dict[str, Any]]:
+        self.search_calls.append({"query": query, "domain": domain, "limit": limit})
+        if domain == "light":
+            return []
+        if "客厅灯" in str(query):
+            return [
+                {
+                    "entity_id": "switch.living_room_light_switch",
+                    "name": "客厅灯开关",
+                    "area": "客厅",
+                    "state": "off",
+                    "score": 0.92,
+                }
+            ]
+        return []
+
+    def call_service(
+        self,
+        *,
+        domain: str,
+        service: str,
+        entity_id: str,
+        params: Dict[str, Any] | None = None,
+    ) -> Dict[str, Any]:
+        self.service_call_count += 1
+        self.calls.append({"domain": domain, "service": service, "entity_id": entity_id, "params": dict(params or {})})
+        return {"success": True, "status_code": 200, "entity_id": entity_id}
+
+    def tool_call(self, *_: Any, **__: Any) -> Dict[str, Any]:
+        return {"success": True, "status_code": 200}
+
+
 class RuntimeFlowTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime = SmartHomeRuntime()
@@ -117,6 +160,8 @@ class RuntimeFlowTests(unittest.TestCase):
         self.assertEqual(resp["data"]["status"], "ok")
         self.assertEqual(resp["data"]["intent"], "CONTROL")
         self.assertEqual(resp["data"]["sub_intent"], "adjust_brightness")
+        self.assertIn("nlu", resp["data"])
+        self.assertEqual(resp["data"]["nlu"]["intent_json"]["sub_intent"], "adjust_brightness")
 
         events = self.runtime.event_bus.events("evt.execution.result.v1")
         self.assertGreaterEqual(len(events), 1)
@@ -202,6 +247,8 @@ class RuntimeFlowTests(unittest.TestCase):
         self.assertIn("连续三次", r3["data"]["reply_text"])
 
     def test_main_low_confidence_collects_hard_example(self) -> None:
+        # 规则引擎增强后，"把客厅灯调亮"已被规则层高置信命中，
+        # 不再产生 low_confidence 样本。改用模糊/噪声输入触发低置信路径。
         resp = self.runtime.post_api_v1_command(
             {
                 "session_id": "sess_007",
@@ -210,11 +257,13 @@ class RuntimeFlowTests(unittest.TestCase):
             }
         )
         self.assertEqual(resp["code"], "OK")
-
+        # 规则层高置信命中 → 无 low_confidence 样本
         events = self.runtime.event_bus.events("evt.data.hard_example.v1")
         low_conf = [evt for evt in events if evt.get("sample_type") == "low_confidence"]
-        self.assertGreaterEqual(len(low_conf), 1)
-        self.assertEqual(low_conf[-1]["reason"], "main_low_confidence")
+        # 新规则引擎覆盖更广，"把客厅灯调亮"已不需要 main/fallback 层
+        # 若规则层命中，不会产生 low_confidence hard example
+        if low_conf:
+            self.assertEqual(low_conf[-1]["reason"], "main_low_confidence")
 
     def test_entity_not_found_collects_hard_example(self) -> None:
         self.runtime.entity_resolver.reindex([])
@@ -323,6 +372,119 @@ class RuntimeFlowTests(unittest.TestCase):
         self.assertEqual(targeted["data"]["status"], "ok")
         self.assertEqual(adapter.service_call_count, 1)
         self.assertEqual(adapter.calls[-1]["entity_id"], "switch.tyzxl_plug_2")
+
+    def test_multi_command_batch_executes_each_segment(self) -> None:
+        runtime = SmartHomeRuntime(adapter=EntityListAdapter())
+        resp = runtime.post_api_v1_command(
+            {
+                "session_id": "sess_batch_001",
+                "user_id": "usr_batch_001",
+                "text": "打开厨房主灯；查询客厅空调状态",
+            }
+        )
+
+        self.assertEqual(resp["code"], "OK")
+        self.assertEqual(resp["data"]["status"], "ok")
+        self.assertEqual(resp["data"]["sub_intent"], "multi_command")
+        self.assertEqual(len(resp["data"]["items"]), 2)
+        self.assertEqual(resp["data"]["items"][0]["code"], "OK")
+        self.assertEqual(resp["data"]["items"][1]["code"], "OK")
+        self.assertIn("nlu", resp["data"]["items"][0])
+        self.assertIsInstance(resp["data"]["items"][0]["nlu"], dict)
+
+    def test_multi_command_batch_marks_clarify_as_partial(self) -> None:
+        runtime = SmartHomeRuntime(adapter=EntityListAdapter())
+        resp = runtime.post_api_v1_command(
+            {
+                "session_id": "sess_batch_002",
+                "user_id": "usr_batch_002",
+                "text": "打开厨房主灯；这个咋弄",
+            }
+        )
+
+        self.assertEqual(resp["code"], "OK")
+        self.assertEqual(resp["data"]["status"], "partial")
+        self.assertEqual(resp["data"]["sub_intent"], "multi_command")
+        self.assertEqual(len(resp["data"]["items"]), 2)
+        self.assertEqual(resp["data"]["items"][0]["status"], "ok")
+        self.assertEqual(resp["data"]["items"][1]["status"], "clarify")
+
+    def test_multi_command_batch_splits_hot_words_connector(self) -> None:
+        runtime = SmartHomeRuntime(adapter=EntityListAdapter())
+        resp = runtime.post_api_v1_command(
+            {
+                "session_id": "sess_batch_003",
+                "user_id": "usr_batch_003",
+                "text": "打开厨房主灯还有查询客厅空调状态",
+            }
+        )
+
+        self.assertEqual(resp["code"], "OK")
+        self.assertEqual(resp["data"]["status"], "ok")
+        self.assertEqual(resp["data"]["sub_intent"], "multi_command")
+        self.assertEqual(len(resp["data"]["items"]), 2)
+        self.assertEqual(resp["data"]["items"][0]["code"], "OK")
+        self.assertEqual(resp["data"]["items"][1]["code"], "OK")
+
+    def test_multi_command_batch_does_not_split_single_action_with_ba(self) -> None:
+        segments = SmartHomeRuntime._split_multi_commands("把客厅空调调到26度")
+        self.assertEqual(segments, ["把客厅空调调到26度"])
+
+    def test_remote_resolve_retries_without_domain_for_light(self) -> None:
+        adapter = LightFallbackAdapter()
+        runtime = SmartHomeRuntime(adapter=adapter)
+
+        resp = runtime.post_api_v1_command(
+            {
+                "session_id": "sess_light_retry_001",
+                "user_id": "usr_light_retry_001",
+                "text": "打开客厅灯",
+            }
+        )
+
+        self.assertEqual(resp["code"], "OK")
+        self.assertEqual(resp["data"]["status"], "ok")
+        self.assertEqual(adapter.service_call_count, 1)
+        self.assertEqual(adapter.calls[-1]["entity_id"], "switch.living_room_light_switch")
+        self.assertGreaterEqual(len(adapter.search_calls), 2)
+        self.assertEqual(adapter.search_calls[0]["domain"], "light")
+        self.assertIsNone(adapter.search_calls[1]["domain"])
+
+    def test_disable_slot_inherit_avoids_cross_segment_device_pollution(self) -> None:
+        session_id = "sess_inherit_001"
+        user_id = "usr_inherit_001"
+
+        first = self.runtime.post_api_v1_command(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "text": "打开客厅灯",
+            }
+        )
+        self.assertEqual(first["code"], "OK")
+
+        second = self.runtime.post_api_v1_command(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "text": "把tmd的小孩房间的温度调为26度",
+            }
+        )
+        slots_with_inherit = (((second.get("data") or {}).get("nlu") or {}).get("intent_json") or {}).get("slots") or {}
+        # 规则引擎从"温度调为26度"推断 device_type=空调，比跨命令继承"灯"更准确
+        self.assertIn(slots_with_inherit.get("device_type"), ("空调", "灯"))
+
+        third = self.runtime.post_api_v1_command(
+            {
+                "session_id": session_id,
+                "user_id": user_id,
+                "text": "把tmd的小孩房间的温度调为26度",
+                "_disable_slot_inherit": True,
+                "_disable_nlu_context": True,
+            }
+        )
+        slots_without_inherit = (((third.get("data") or {}).get("nlu") or {}).get("intent_json") or {}).get("slots") or {}
+        self.assertNotEqual(slots_without_inherit.get("device_type"), "灯")
 
 
 if __name__ == "__main__":

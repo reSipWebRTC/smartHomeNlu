@@ -48,6 +48,29 @@ def test_nlu_fallback_qwen_falls_back_to_rule_parser_on_invalid_json(monkeypatch
     assert intent.slots.get("device_type") == "开关"
 
 
+def test_nlu_fallback_qwen_infers_sub_intent_when_missing(monkeypatch) -> None:
+    model = NluFallbackQwen(max_retry=0)
+
+    payload = {
+        "intent": "QUERY",
+        "sub_intent": "",
+        "slots": {"room_number": "二楼"},
+        "confidence": 0.95,
+    }
+
+    monkeypatch.setattr(
+        model,
+        "_request_remote",
+        lambda text, context: {"message": {"content": json.dumps(payload, ensure_ascii=False)}},
+    )
+
+    intent = model.predict("打开二楼的社等")
+
+    assert intent.intent == "QUERY"
+    assert intent.sub_intent == "query_status"
+    assert intent.slots.get("room_number") == "二楼"
+
+
 def test_nlu_router_uses_qwen_provider_when_enabled(monkeypatch) -> None:
     monkeypatch.setenv("SMARTHOME_NLU_FALLBACK_PROVIDER", "qwen_remote")
     router = NluRouter(InMemoryEventBus())

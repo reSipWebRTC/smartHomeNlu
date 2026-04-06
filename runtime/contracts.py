@@ -46,6 +46,7 @@ class IntentJson:
     sub_intent: str
     slots: Dict[str, Any]
     confidence: float
+    multi_commands: Optional[List[Dict[str, Any]]] = None
 
     def as_dict(self) -> Dict[str, Any]:
         payload = asdict(self)

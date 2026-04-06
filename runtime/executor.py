@@ -4,6 +4,7 @@ import time
 from typing import Any, Dict, Tuple
 
 from .contracts import ExecutionResult, PolicyDecision
+from .debug_log import compact, get_logger
 from .event_bus import InMemoryEventBus
 from .observability import Observability
 from .redis_backend import RedisStateBackend
@@ -28,6 +29,7 @@ class Executor:
         self._state_backend = state_backend
         self.dedup_window_sec = dedup_window_sec
         self._dedup_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+        self._logger = get_logger("executor")
 
     def _dedup_get(self, key: str) -> Dict[str, Any] | None:
         if self._state_backend is not None:
@@ -123,6 +125,14 @@ class Executor:
         while True:
             attempt += 1
             raw = self._invoke_adapter(call_plan)
+            self._logger.debug(
+                "invoke attempt=%d tool=%s service=%s success=%s raw=%s",
+                attempt,
+                call_plan.get("tool_name"),
+                call_plan.get("service_name"),
+                bool(raw.get("success")),
+                compact(raw),
+            )
             if raw.get("success"):
                 return raw, attempt
 
@@ -147,6 +157,16 @@ class Executor:
         resolved_entity_id: str | None,
         confirmed: bool,
     ) -> Dict[str, Any]:
+        self._logger.debug(
+            "run start trace_id=%s session_id=%s user_id=%s policy=%s intent=%s resolved_entity=%s confirmed=%s",
+            trace_id,
+            session_id,
+            user_id,
+            policy.decision,
+            f"{intent_json.get('intent')}/{intent_json.get('sub_intent')}",
+            resolved_entity_id,
+            confirmed,
+        )
         if policy.decision == "deny":
             result = ExecutionResult(
                 status="blocked",
@@ -209,6 +229,16 @@ class Executor:
             latency_ms=latency_ms,
             error_code=None if success else code,
             upstream_status_code=raw.get("status_code"),
+        )
+        self._logger.info(
+            "run result trace_id=%s code=%s status=%s tool=%s entity_id=%s latency_ms=%s attempts=%s",
+            trace_id,
+            code,
+            result.status,
+            result.tool_name,
+            result.entity_id,
+            result.latency_ms,
+            attempts,
         )
 
         self.event_bus.publish(

@@ -8,6 +8,8 @@ import uuid
 from difflib import SequenceMatcher
 from typing import Any, Callable, Dict, List
 
+from .debug_log import compact, get_logger
+
 
 GatewayRunner = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 
@@ -92,6 +94,7 @@ class HaGatewayAdapter:
         self._state_poll_interval_sec = max(0.05, float(state_poll_interval_sec))
 
         self.mode = "ha_gateway" if (self._gateway_url or gateway_runner is not None) else "stub"
+        self._logger = get_logger("ha_gateway")
         self.service_call_count = 0
         self.backup_call_count = 0
 
@@ -99,6 +102,12 @@ class HaGatewayAdapter:
             [dict(item) for item in (entities or DEFAULT_ENTITIES)] if self.mode == "stub" else []
         )
         self._entity_cache_updated_at = 0.0
+        self._logger.info(
+            "adapter init mode=%s gateway_url=%s timeout_sec=%s",
+            self.mode,
+            self._gateway_url or "(unset)",
+            self._timeout_sec,
+        )
 
     def get_all_entities(self) -> List[Dict[str, Any]]:
         if self.mode == "ha_gateway":
@@ -472,10 +481,12 @@ class HaGatewayAdapter:
         self._entity_cache_updated_at = time.time()
 
     def _gateway_call(self, message_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._logger.debug("gateway_call type=%s payload=%s", message_type, compact(payload))
         if self._gateway_runner is not None:
             try:
                 raw = self._gateway_runner(message_type, dict(payload))
             except TimeoutError:
+                self._logger.warning("gateway_call timeout type=%s", message_type)
                 return {
                     "success": False,
                     "error_code": "UPSTREAM_TIMEOUT",
@@ -483,6 +494,7 @@ class HaGatewayAdapter:
                     "error": "gateway timeout",
                 }
             except Exception as exc:
+                self._logger.warning("gateway_call exception type=%s error=%s", message_type, str(exc))
                 return {
                     "success": False,
                     "error_code": "UPSTREAM_ERROR",
@@ -492,6 +504,7 @@ class HaGatewayAdapter:
             return self._normalize_gateway_response(raw)
 
         if not self._gateway_url:
+            self._logger.warning("gateway_call missing gateway_url type=%s", message_type)
             return {
                 "success": False,
                 "error_code": "UPSTREAM_ERROR",
@@ -502,6 +515,7 @@ class HaGatewayAdapter:
         try:
             raw = asyncio.run(self._gateway_request(message_type, payload))
         except TimeoutError:
+            self._logger.warning("gateway_call timeout type=%s", message_type)
             return {
                 "success": False,
                 "error_code": "UPSTREAM_TIMEOUT",
@@ -509,6 +523,7 @@ class HaGatewayAdapter:
                 "error": "gateway timeout",
             }
         except ImportError as exc:
+            self._logger.warning("gateway_call import_error type=%s error=%s", message_type, str(exc))
             return {
                 "success": False,
                 "error_code": "UPSTREAM_ERROR",
@@ -516,6 +531,7 @@ class HaGatewayAdapter:
                 "error": f"websocket client unavailable: {exc}",
             }
         except Exception as exc:
+            self._logger.warning("gateway_call exception type=%s error=%s", message_type, str(exc))
             return {
                 "success": False,
                 "error_code": "UPSTREAM_ERROR",
@@ -523,7 +539,10 @@ class HaGatewayAdapter:
                 "error": str(exc),
             }
 
-        return self._normalize_gateway_response(raw)
+        normalized = self._normalize_gateway_response(raw)
+        if not normalized.get("success"):
+            self._logger.warning("gateway_call failed type=%s normalized=%s", message_type, compact(normalized))
+        return normalized
 
     async def _gateway_request(self, message_type: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         import websockets

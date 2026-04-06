@@ -56,3 +56,22 @@ def test_nlu_fallback_supports_switch_power_off() -> None:
 def test_intent_to_domain_switch_for_outlet() -> None:
     domain = intent_to_domain("power_on", {"device_type": "插座"})
     assert domain == "switch"
+
+
+def test_entity_resolver_hot_words_device_type_new_air_maps_to_climate() -> None:
+    resolver = EntityResolver(
+        InMemoryEventBus(),
+        entities=[
+            {"entity_id": "climate.living_room_fresh_air", "name": "客厅新风机", "area": "客厅"},
+            {"entity_id": "light.living_room_main", "name": "客厅主灯", "area": "客厅"},
+        ],
+    )
+
+    candidates = resolver.resolve(
+        trace_id="trc_resolve_hot_words_001",
+        slots={"device_type": "新风", "location": "客厅"},
+        top_k=3,
+    )
+
+    assert candidates
+    assert candidates[0].entity_id == "climate.living_room_fresh_air"

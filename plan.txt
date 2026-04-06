@@ -1,14 +1,14 @@
-  - 给出下一阶段优先级：A 生产化运行时（FastAPI+Redis）或 B 先接真实 HA 或 C 先做离线训练链路。
-  - 如果走 B：需要你提供 HA 联调环境（URL、token、可操作测试实体清单、禁操作清单）。
-  - 如果走 A：需要你确认技术选型（FastAPI + Redis + pytest）和部署方式（单机/docker-compose）。
-  - 需要你确认 RBAC 最终规则（哪些角色可执行 unlock/backup/automation）。
-  - 需要你确认审计合规要求（字段留存时长、是否需要落盘到文件/数据库）。
-  
-     如果你要我继续，我可以直接做两件事让第4步“控制类”也稳定通过：
+    
+      当前状态说明
 
-  1. 优化实体检索（避免只用“灯”这种过短关键词导致匹配失败）
-  2. 给 NLU 增加“开关/插座”等设备类型控制支持
+  - 已实现“兜底路 Qwen 远程调用”。
+  - 还未实现“主路 TinyBERT ONNX”和/api/v1/nlu/parse新接口（下一步可以继续做）。
 
+  1. 继续做主路 runtime/nlu_main_onnx.py
+  2. 加 POST /api/v1/nlu/parse 调试接口
+  3. 接入 NLUResult schema 校验与错误码
+
+intent/sub_intent/slot
 
     codex --dangerously-bypass-approvals-and-sandbox
     
@@ -19,5 +19,75 @@
   export SMARTHOME_HA_CONTROL_MODE=ha_mcp
   export SMARTHOME_HA_MCP_URL=http://127.0.0.1:8086/mcp
   uvicorn runtime.server:app --host 0.0.0.0 --port 8000
+  
+  ssh-add ~/.ssh/id_ed25519 密码：123456
+  
+   建议这样落地：
+
+  1. 规则层只接收“高确定性命中”
+     intent/sub_intent 明确且关键槽位齐全才通过；否则直接进 TinyBERT。
+  2. TinyBERT 做主模型
+     如果 confidence 低于阈值（如 <0.80）或关键槽位缺失，就转 Qwen。
+  3. Qwen 做兜底
+     要求严格 JSON 输出（schema 校验 + 意图白名单映射）。
+  4. 执行前再做“关键槽位门禁”
+     例如 set_temperature 至少要有 device_type/target + value，不满足就澄清，不执行。
+  5. 全流程打路由日志
+     记录 route=rule|tinybert|qwen|clarify，方便回溯。
+     
+    
+pinyin matching
+
+如果你同意，我下一步可以继续把 hot_words_config.json 里的 connectors 也接入批处理切分器，让“并且/然后/还有/把”分句更稳。
+
+可改进方向
+
+  1. 扩充词表 — 至少覆盖 top 2000 常用汉字（特别是"内/外/平/方/米/9"等），重新训练
+  2. 输入端去噪 — ONNX 前加轻量清洗，去掉连续无意义重复字符（"哦阿国家哦阿机构..."），只保留最后有语义的片段
+  3. 训练数据增强 — 加入 ASR 噪声扰动的样本，让 BIO tagger 学会在 [UNK] 旁边仍保持 span 连续性
+  4. 模型容量 — 342KB 对噪声鲁棒性不够，考虑 5-10MB 的 MiniLM 或 6-layer TinyBERT
+
+  方向 2（输入端去噪）改动最小、见效最快，因为不改模型就能提升 slot 质量。要从哪个方向入手？
+  
+  
+  # NLU 输出（标准 JSON）
+  {
+    "intent": "CONTROL",
+    "sub_intent": "adjust_brightness",
+    "slots": {
+      "device_type": "灯",
+      "location": "客厅",
+      "attribute": "亮度",
+      "value": "50",
+      "value_unit": "%"
+    },
+    "confidence": 0.94
+  } NLU返回格式，但是 {
+        "index": 6,
+        "text": "打开二楼的社等",
+        "code": "OK",
+        "status": "clarify",
+        "nlu": {
+          "route": "fallback",
+          "route_stage": "qwen",
+          "model_version": "nlu-fallback-qwen-v1",
+          "need_clarify": true,
+          "threshold": {
+            "rule_pass": 0.88,
+            "main_pass": 0.85,
+            "fallback_trigger": 0.6,
+            "clarify_trigger": 0.65
+          },
+          "intent_json": {
+            "intent": "QUERY",
+            "sub_intent": "query_status",
+            "slots": {
+              "location": "二楼"
+            },
+            "confidence": 0.95
+          }                                                                                                                                                                    ,>      
+        }                                   
+
+很多字段丢了？先分析
 
 

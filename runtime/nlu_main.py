@@ -1,79 +1,249 @@
+"""nlu_main.py – 规则层适配器
+
+将 SmartHomeRuleEngine 的 SemanticDecision 输出转换为 runtime 标准的 IntentJson，
+保持 nlu_router.py 的调用接口不变。
+"""
+
 from __future__ import annotations
 
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from .contracts import IntentJson
-from .utils import extract_location, extract_number, normalize_text
+from .debug_log import get_logger
+from .nlu_rule_engine import (
+    SmartHomeRuleEngine,
+    SemanticDecision,
+    SemanticCommand,
+    SlotValue,
+    HotWordsConfig,
+    create_default_hot_words,
+    load_hot_words_from_file,
+)
+
+logger = get_logger("nlu_main_rule")
+
+# ── 映射表 ──────────────────────────────────────────────────────
+
+_INTENT_MAP = {
+    "device_control": "CONTROL",
+    "state_query": "QUERY",
+    "scene_activate": "SCENE",
+    "automation_create": "SYSTEM",
+    "automation_cancel": "SYSTEM",
+    "unknown": "CHITCHAT",
+}
+
+_CANONICAL_ACTION_TO_SUB_INTENT = {
+    "打开": "power_on",
+    "关闭": "power_off",
+    "设置为": "set_temperature",
+    "调高": "adjust_brightness",
+    "调低": "adjust_brightness",
+    "调亮": "adjust_brightness",
+    "调暗": "adjust_brightness",
+    "移动到": "power_on",
+}
+
+_PARAM_DISPLAY = {
+    "temperature": "温度",
+    "brightness": "亮度",
+    "color": "颜色",
+    "speed": "风速",
+    "ratio": "开合",
+    "level": "档位",
+}
 
 
-def _detect_device_type(raw: str) -> str | None:
-    if "插座" in raw:
-        return "插座"
-    if "灯" in raw:
-        return "灯"
-    if "空调" in raw:
-        return "空调"
-    if "门锁" in raw or ("门" in raw and ("解锁" in raw or "开锁" in raw)):
-        return "门锁"
-    if "开关" in raw:
-        return "开关"
-    return None
+def _sv_normalized(sv: Optional[SlotValue]) -> str:
+    """安全取 SlotValue.normalized。"""
+    if sv is None:
+        return ""
+    return sv.normalized or ""
+
+
+def _sv_raw(sv: Optional[SlotValue]) -> str:
+    """安全取 SlotValue.raw。"""
+    if sv is None:
+        return ""
+    return sv.raw or ""
+
+
+# ── SemanticCommand → sub_intent 推断 ────────────────────────────
+
+def _infer_sub_intent(cmd: SemanticCommand) -> str:
+    intent = cmd.intent or ""
+
+    # 场景 / 查询 / 自动化 直接映射
+    if intent == "scene_activate":
+        return "activate_scene"
+    if intent == "state_query":
+        return "query_status"
+    if intent in ("automation_create", "automation_cancel"):
+        return "backup"
+
+    # 从 action.normalized 映射
+    action = _sv_normalized(cmd.action)
+    if action in _CANONICAL_ACTION_TO_SUB_INTENT:
+        sub = _CANONICAL_ACTION_TO_SUB_INTENT[action]
+        # 区分温度 vs 亮度
+        param = _sv_normalized(cmd.parameter)
+        unit = _sv_normalized(cmd.unit)
+        if sub == "set_temperature":
+            if param == "brightness" or unit == "%":
+                return "adjust_brightness"
+            return "set_temperature"
+        if sub == "adjust_brightness":
+            if param == "temperature" or unit in ("度", "℃"):
+                return "set_temperature"
+            return "adjust_brightness"
+        return sub
+
+    # 有设备无动作 → 开
+    if _sv_normalized(cmd.device):
+        return "power_on"
+
+    return "unknown"
+
+
+# ── SemanticCommand → slots 提取 ─────────────────────────────────
+
+def _extract_slots(cmd: SemanticCommand) -> Dict[str, Any]:
+    slots: Dict[str, Any] = {}
+
+    location = _sv_normalized(cmd.location)
+    if location:
+        slots["location"] = location
+
+    device = _sv_normalized(cmd.device)
+    if device:
+        # 场景激活时 device 槽位放的是场景名
+        if cmd.intent == "scene_activate":
+            slots["scene_name"] = device
+        else:
+            slots["device_type"] = device
+
+    parameter = _sv_normalized(cmd.parameter)
+    if parameter:
+        slots["attribute"] = _PARAM_DISPLAY.get(parameter, parameter)
+
+    value_raw = _sv_raw(cmd.value)
+    if value_raw:
+        try:
+            slots["value"] = float(value_raw) if "." in str(value_raw) else int(value_raw)
+        except (ValueError, TypeError):
+            slots["value"] = value_raw
+
+    unit = _sv_normalized(cmd.unit)
+    if unit:
+        if unit in ("℃", "度"):
+            slots["value_unit"] = "℃"
+        elif unit == "%":
+            slots["value_unit"] = "%"
+        else:
+            slots["value_unit"] = unit
+
+    return slots
+
+
+# ── SemanticDecision → IntentJson ────────────────────────────────
+
+def _single_cmd_to_intent(cmd: SemanticCommand) -> Dict[str, Any]:
+    """Convert a single SemanticCommand to an intent dict (for multi_commands)."""
+    return {
+        "intent": _INTENT_MAP.get(cmd.intent, "CONTROL"),
+        "sub_intent": _infer_sub_intent(cmd),
+        "slots": _extract_slots(cmd),
+        "confidence": max(0.0, min(1.0, cmd.confidence)),
+    }
+
+
+def _decision_to_intent_json(decision: SemanticDecision) -> IntentJson:
+    if not decision.commands:
+        # 无命令命中
+        if decision.implicit_signals:
+            return IntentJson(
+                intent="SCENE",
+                sub_intent="activate_scene",
+                slots={},
+                confidence=max(0.0, min(1.0, decision.overall_confidence)),
+            )
+        return IntentJson(
+            intent="CHITCHAT",
+            sub_intent="unknown",
+            slots={},
+            confidence=max(0.0, min(1.0, decision.overall_confidence)),
+        )
+
+    primary = decision.commands[0]
+    intent_str = _INTENT_MAP.get(primary.intent, "CONTROL")
+    sub_intent = _infer_sub_intent(primary)
+    slots = _extract_slots(primary)
+
+    # 多命令时从后续命令补充缺失槽位，同时构建 multi_commands 列表
+    multi_commands: list[Dict[str, Any]] | None = None
+    if len(decision.commands) > 1:
+        multi_commands = [_single_cmd_to_intent(primary)]
+        for extra_cmd in decision.commands[1:]:
+            extra_slots = _extract_slots(extra_cmd)
+            for key in ("location", "device_type", "scene_name"):
+                if key not in slots and key in extra_slots:
+                    slots.setdefault(key, extra_slots[key])
+            multi_commands.append(_single_cmd_to_intent(extra_cmd))
+
+    confidence = max(0.0, min(1.0, max(primary.confidence, decision.overall_confidence)))
+    return IntentJson(
+        intent=intent_str,
+        sub_intent=sub_intent,
+        slots=slots,
+        confidence=confidence,
+        multi_commands=multi_commands,
+    )
+
+
+# ── NluMain 适配器类 ──────────────────────────────────────────────
+
+def _load_hot_words_config() -> HotWordsConfig:
+    """尝试从 hot_words_config.json 加载，失败则回退默认。"""
+    config_candidates = [
+        Path(__file__).resolve().parent.parent / "hot_words_config.json",
+        Path(__file__).resolve().parent / "hot_words_config.json",
+    ]
+    for path in config_candidates:
+        if path.exists():
+            logger.info("Loading hot words from %s", path)
+            return load_hot_words_from_file(str(path))
+    logger.info("hot_words_config.json not found, using default config")
+    return create_default_hot_words()
 
 
 class NluMain:
+    """规则层适配器：SmartHomeRuleEngine → IntentJson"""
+
+    def __init__(self) -> None:
+        hot_words = _load_hot_words_config()
+        self._engine = SmartHomeRuleEngine(hot_words)
+        self._logger = logger
+
     def predict(self, text: str, context: Dict[str, Any] | None = None) -> IntentJson:
         raw = text.strip()
-        normalized = normalize_text(raw)
-        slots: Dict[str, Any] = {}
+        if not raw:
+            return IntentJson(intent="CHITCHAT", sub_intent="unknown", slots={}, confidence=0.0)
 
-        location = extract_location(raw)
-        if location:
-            slots["location"] = location
+        parse_result = self._engine.parse(raw)
+        decision = self._engine.parse_semantic(
+            raw,
+            parse_result=parse_result,
+            source="rule",
+        )
+        intent_json = _decision_to_intent_json(decision)
 
-        device_type = _detect_device_type(raw)
-        if device_type:
-            slots["device_type"] = device_type
-
-        value = extract_number(raw)
-        if value is not None:
-            slots["value"] = value
-            if "%" in raw:
-                slots["value_unit"] = "%"
-            if "度" in raw or "℃" in raw:
-                slots["value_unit"] = "℃"
-
-        if any(word in normalized for word in ("你好", "天气", "谢谢", "再见")):
-            return IntentJson(intent="CHITCHAT", sub_intent="chitchat", slots=slots, confidence=0.55)
-
-        if "备份" in raw:
-            return IntentJson(intent="SYSTEM", sub_intent="backup", slots=slots, confidence=0.93)
-
-        if "解锁" in raw or "开锁" in raw:
-            slots.setdefault("device_type", "门锁")
-            return IntentJson(intent="CONTROL", sub_intent="unlock", slots=slots, confidence=0.9)
-
-        if "模式" in raw and ("打开" in raw or "开启" in raw):
-            scene_name = raw.replace("打开", "").replace("开启", "").replace("模式", "").strip()
-            if scene_name:
-                slots["scene_name"] = f"{scene_name}模式"
-            return IntentJson(intent="SCENE", sub_intent="activate_scene", slots=slots, confidence=0.88)
-
-        if any(word in raw for word in ("亮度", "调到", "调成", "调亮", "调暗", "%")) and slots.get("device_type") == "灯":
-            slots["attribute"] = "亮度"
-            confidence = 0.94 if "value" in slots else 0.72
-            return IntentJson(intent="CONTROL", sub_intent="adjust_brightness", slots=slots, confidence=confidence)
-
-        if slots.get("device_type") == "空调" and ("温度" in raw or "调到" in raw or "调低" in raw or "调高" in raw):
-            slots["attribute"] = "温度"
-            confidence = 0.9 if "value" in slots else 0.7
-            return IntentJson(intent="CONTROL", sub_intent="set_temperature", slots=slots, confidence=confidence)
-
-        if any(k in raw for k in ("打开", "开启", "关掉", "关闭", "关上")) and "device_type" in slots:
-            if any(k in raw for k in ("关掉", "关闭", "关上")):
-                return IntentJson(intent="CONTROL", sub_intent="power_off", slots=slots, confidence=0.9)
-            return IntentJson(intent="CONTROL", sub_intent="power_on", slots=slots, confidence=0.9)
-
-        if any(word in raw for word in ("多少", "状态", "几度", "查询")):
-            return IntentJson(intent="QUERY", sub_intent="query_status", slots=slots, confidence=0.8)
-
-        return IntentJson(intent="CHITCHAT", sub_intent="unknown", slots=slots, confidence=0.45)
+        self._logger.debug(
+            "predict text=%s intent=%s/%s conf=%.3f slots=%s",
+            raw,
+            intent_json.intent,
+            intent_json.sub_intent,
+            float(intent_json.confidence),
+            intent_json.slots,
+        )
+        return intent_json

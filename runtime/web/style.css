@@ -245,6 +245,17 @@ textarea:focus {
   word-break: break-word;
 }
 
+#nluView {
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #f6fbf8;
+  min-height: 140px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 #compareView {
   margin: 0;
   padding: 12px;

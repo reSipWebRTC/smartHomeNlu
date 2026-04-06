@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODEL_DIR="${ROOT_DIR}/.runtime_local/models/tinybert_nlu_multitask_v1"
 
+export SMARTHOME_DEBUG_FLOW=1 
+export SMARTHOME_LOG_LEVEL=DEBUG 
 export SMARTHOME_NLU_MAIN_PROVIDER="onnx"
 export SMARTHOME_NLU_MAIN_MODEL_PATH="${MODEL_DIR}/model.onnx"
 export SMARTHOME_NLU_MAIN_LABEL_PATH="${MODEL_DIR}/labels.json"

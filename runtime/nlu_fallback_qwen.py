@@ -8,6 +8,7 @@ from typing import Any, Dict
 import httpx
 
 from .contracts import IntentJson
+from .debug_log import compact, get_logger
 from .nlu_fallback import NluFallback
 
 
@@ -86,6 +87,29 @@ def _normalize_sub_intent(action: str) -> str:
     return action.strip() or "unknown"
 
 
+def _infer_sub_intent_from_payload(intent: str, slots: Dict[str, Any], payload: Dict[str, Any]) -> str:
+    action = str(payload.get("action") or payload.get("sub_action") or "").strip()
+    if action:
+        return _normalize_sub_intent(action)
+
+    merged_text = json.dumps({"slots": slots, "payload": payload}, ensure_ascii=False).lower()
+    if any(token in merged_text for token in ("温度", "temperature", "temp")):
+        return "set_temperature"
+    if any(token in merged_text for token in ("亮度", "brightness", "brightness_pct", "%")):
+        return "adjust_brightness"
+    if any(token in merged_text for token in ("解锁", "开锁", "unlock")):
+        return "unlock"
+    if intent == "QUERY":
+        return "query_status"
+    if intent == "SCENE":
+        return "activate_scene"
+    if intent == "SYSTEM":
+        return "backup"
+    if intent == "CONTROL":
+        return "power_on"
+    return "unknown"
+
+
 class NluFallbackQwen:
     """
     兜底解析器：远程调用 Qwen（Ollama API），失败时回退到本地规则解析器。
@@ -113,26 +137,40 @@ class NluFallbackQwen:
         self.keep_alive = (os.getenv("SMARTHOME_NLU_FALLBACK_KEEP_ALIVE") or "5m").strip()
         self.response_format = (os.getenv("SMARTHOME_NLU_FALLBACK_FORMAT") or "json").strip()
         self.local_fallback = local_fallback or NluFallback()
+        self._logger = get_logger("nlu_fallback_qwen")
+        self._logger.info(
+            "fallback init url=%s model=%s timeout_ms=%s retries=%s",
+            self.url,
+            self.model,
+            self.timeout_ms,
+            self.max_retry,
+        )
 
     def predict(self, text: str, context: Dict[str, Any] | None = None) -> IntentJson:
         context = context or {}
         attempts = max(0, int(self.max_retry)) + 1
+        self._logger.debug("predict start text=%s attempts=%s", text, attempts)
 
         for _ in range(attempts):
             try:
                 response = self._request_remote(text, context)
                 parsed = self._parse_ollama_response(response)
+                self._logger.debug("predict remote_ok parsed=%s", compact(parsed, max_len=800))
                 return self._intent_from_payload(parsed)
             except Exception:
+                self._logger.warning("predict remote_failed; trying next attempt")
                 continue
 
         # 远程兜底失败时，保证行为可用
+        self._logger.warning("predict fallback_to_rule text=%s", text)
         return self.local_fallback.predict(text, context)
 
     def _request_remote(self, text: str, context: Dict[str, Any]) -> Dict[str, Any]:
         timeout = max(1, self.timeout_ms) / 1000.0
         payload = self._build_payload(text, context)
-        with httpx.Client(timeout=timeout) as client:
+        self._logger.debug("request_remote url=%s timeout=%.3f payload=%s", self.url, timeout, compact(payload, max_len=1200))
+        # Ignore global proxy envs (e.g. socks://...) to keep LAN Ollama calls stable.
+        with httpx.Client(timeout=timeout, trust_env=False) as client:
             resp = client.post(self.url, json=payload)
             resp.raise_for_status()
             return dict(resp.json())
@@ -208,7 +246,9 @@ class NluFallbackQwen:
         slots = _to_slots(payload.get("slots"))
         confidence = _clamp_confidence(payload.get("confidence"), default=0.72)
 
-        if intent and sub_intent:
+        if intent:
+            if not sub_intent:
+                sub_intent = _infer_sub_intent_from_payload(intent, slots, payload)
             return IntentJson(
                 intent=intent if intent in {"CONTROL", "QUERY", "SCENE", "SYSTEM", "CHITCHAT"} else "CHITCHAT",
                 sub_intent=sub_intent or "unknown",

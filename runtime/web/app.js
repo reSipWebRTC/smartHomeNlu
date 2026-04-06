@@ -9,6 +9,7 @@ const dom = {
   clearBtn: document.getElementById("clearBtn"),
   healthBtn: document.getElementById("healthBtn"),
   healthBadge: document.getElementById("healthBadge"),
+  nluView: document.getElementById("nluView"),
   responseView: document.getElementById("responseView"),
   compareBtn: document.getElementById("compareBtn"),
   compareIsolateSession: document.getElementById("compareIsolateSession"),
@@ -88,6 +89,32 @@ function setBusy(busy) {
 
 function showResponse(payload) {
   setText(dom.responseView, JSON.stringify(payload, null, 2));
+}
+
+function extractNluResult(payload) {
+  const data = payload?.data || {};
+  if (data?.sub_intent === "multi_command" && Array.isArray(data.items)) {
+    return {
+      intent: data.intent || "BATCH",
+      sub_intent: data.sub_intent || "multi_command",
+      status: data.status || "",
+      items: data.items.map((item) => ({
+        index: item.index,
+        text: item.text,
+        code: item.code,
+        status: item.status,
+        nlu: item.nlu || null,
+      })),
+    };
+  }
+  if (data?.nlu) {
+    return data.nlu;
+  }
+  return { message: "本次响应未返回语义解析详情" };
+}
+
+function showNlu(payload) {
+  setText(dom.nluView, JSON.stringify(payload, null, 2));
 }
 
 function showCompare(summary, payload) {
@@ -178,9 +205,12 @@ function selectedDevice() {
 }
 
 function templateByDevice(device) {
+  const commonTemplates = ["关闭某设备"];
+
   if (!device) {
     return [
       "把客厅灯调到60%",
+      ...commonTemplates,
       "查询客厅空调状态",
       "把前门解锁",
       "启动回家模式",
@@ -191,19 +221,19 @@ function templateByDevice(device) {
   const domain = String(device.entity_id || "").split(".")[0];
 
   if (domain === "light") {
-    return [`打开${name}`, `关闭${name}`, `把${name}调到60%`, `查询${name}状态`];
+    return [...commonTemplates, `打开${name}`, `关闭${name}`, `把${name}调到60%`, `查询${name}状态`];
   }
   if (domain === "climate") {
-    return [`打开${name}`, `把${name}温度调到26度`, `查询${name}状态`];
+    return [...commonTemplates, `打开${name}`, `关闭${name}`, `把${name}温度调到26度`, `查询${name}状态`];
   }
   if (domain === "lock") {
-    return [`把${name}解锁`, `查询${name}状态`];
+    return [...commonTemplates, `把${name}解锁`, `查询${name}状态`];
   }
   if (domain === "scene") {
-    return [`启动${name}`, `查询${name}状态`];
+    return [...commonTemplates, `启动${name}`, `查询${name}状态`];
   }
 
-  return [`查询${name}状态`, `打开${name}`];
+  return [...commonTemplates, `查询${name}状态`, `打开${name}`, `关闭${name}`];
 }
 
 function renderTemplates() {
@@ -403,6 +433,7 @@ async function submitCommand(textOverride = "") {
     });
 
     showResponse(data);
+    showNlu(extractNluResult(data));
     const code = data.code || "UNKNOWN";
     const replyText = data?.data?.reply_text || "";
     pushTimeline("command", `code=${code}, http=${httpStatus}${replyText ? `, reply=${replyText}` : ""}`);
@@ -526,6 +557,7 @@ function fillDemo() {
 
 function clearTimeline() {
   dom.timeline.innerHTML = "";
+  setText(dom.nluView, "等待请求...");
   setText(dom.responseView, "等待请求...");
   setText(dom.compareSummary, "等待对比执行...");
   setText(dom.compareView, "等待对比结果...");

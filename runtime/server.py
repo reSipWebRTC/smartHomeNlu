@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .api_gateway import SmartHomeRuntime
+from .debug_log import configure_logging
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
@@ -39,6 +40,7 @@ def create_app(
     redis_client: Any | None = None,
     adapter: Any | None = None,
 ) -> FastAPI:
+    configure_logging()
     runtime = SmartHomeRuntime(redis_url=redis_url, redis_client=redis_client, adapter=adapter)
     app = FastAPI(title="SmartHome NLU Runtime", version="v1")
     app.state.runtime = runtime

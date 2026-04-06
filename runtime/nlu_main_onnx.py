@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from .contracts import IntentJson
+from .debug_log import get_logger
 from .nlu_main import NluMain
 from .utils import normalize_text
 
@@ -70,6 +71,7 @@ class NluMainOnnx:
         local_fallback: NluMain | None = None,
     ) -> None:
         self.local_fallback = local_fallback or NluMain()
+        self._logger = get_logger("nlu_main_onnx")
         self.model_path = (model_path or os.getenv("SMARTHOME_NLU_MAIN_MODEL_PATH") or "").strip()
         self.label_path = (label_path or os.getenv("SMARTHOME_NLU_MAIN_LABEL_PATH") or "").strip()
         self.vocab_path = (vocab_path or os.getenv("SMARTHOME_NLU_MAIN_VOCAB_PATH") or "").strip()
@@ -99,10 +101,17 @@ class NluMainOnnx:
         self._load_labels()
         self._load_vocab()
         self._try_init_onnx()
+        self._logger.info(
+            "main_onnx init enabled=%s model_version=%s model_path=%s",
+            self.enabled,
+            self.model_version,
+            self.model_path or "(unset)",
+        )
 
     def predict(self, text: str, context: Dict[str, Any] | None = None) -> IntentJson:
         context = context or {}
         if not self.enabled or self.session is None:
+            self._logger.debug("predict fallback_to_rule enabled=%s", self.enabled)
             return self.local_fallback.predict(text, context)
 
         try:
@@ -113,8 +122,15 @@ class NluMainOnnx:
                 output_map[name] = raw_outputs[idx]
             parsed = self._intent_from_outputs(text=text, outputs=output_map, token_chars=token_chars)
             if parsed is not None:
+                self._logger.debug(
+                    "predict onnx_ok intent=%s/%s conf=%.3f",
+                    parsed.intent,
+                    parsed.sub_intent,
+                    float(parsed.confidence),
+                )
                 return parsed
         except Exception:
+            self._logger.warning("predict onnx_failed fallback_to_rule")
             pass
 
         return self.local_fallback.predict(text, context)

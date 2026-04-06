@@ -9,6 +9,8 @@ from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
+from .debug_log import compact, get_logger
+
 
 DEFAULT_ENTITIES: List[Dict[str, Any]] = [
     {
@@ -374,6 +376,7 @@ class HaMcpAdapter:
         self._sync_limit_per_domain = max(20, min(sync_limit, 1000))
         self._remote_tool_runner = remote_tool_runner
         self.mode = "ha_mcp" if (self._mcp_url or remote_tool_runner is not None) else "stub"
+        self._logger = get_logger("ha_mcp")
 
         if self.mode == "stub":
             self._entities = [dict(item) for item in (entities or DEFAULT_ENTITIES)]
@@ -382,6 +385,13 @@ class HaMcpAdapter:
 
         self.service_call_count = 0
         self.backup_call_count = 0
+        self._logger.info(
+            "adapter init mode=%s mcp_url=%s timeout_sec=%s retries=%s",
+            self.mode,
+            self._mcp_url or "(unset)",
+            self._timeout_sec,
+            self._timeout_retries,
+        )
 
     def get_all_entities(self, *, force_refresh: bool = False) -> List[Dict[str, Any]]:
         if self.mode == "ha_mcp" and (force_refresh or not self._entities):
@@ -554,17 +564,20 @@ class HaMcpAdapter:
         return list(dedup.values())
 
     def _remote_tool_call(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
+        self._logger.debug("remote_tool_call name=%s params=%s", tool_name, compact(params))
         primary = self._call_and_normalize(tool_name, params)
         if primary.get("success"):
             return primary
 
         proxy_tool = TOOL_PROXY_HINT.get(tool_name)
         if not proxy_tool:
+            self._logger.warning("remote_tool_call failed name=%s result=%s", tool_name, compact(primary))
             return primary
 
         error_code = str(primary.get("error_code", ""))
         error_msg = str(primary.get("error", ""))
         if not _is_probable_missing_tool_error(error_code, error_msg):
+            self._logger.warning("remote_tool_call failed name=%s result=%s", tool_name, compact(primary))
             return primary
 
         target_tool = TOOL_NAME_ALIAS.get(tool_name, tool_name)
@@ -572,6 +585,12 @@ class HaMcpAdapter:
         proxy_result = self._call_and_normalize(proxy_tool, proxy_params, normalize_as=tool_name)
         if proxy_result.get("success"):
             return proxy_result
+        self._logger.warning(
+            "remote_tool_call failed name=%s primary=%s proxy_result=%s",
+            tool_name,
+            compact(primary),
+            compact(proxy_result),
+        )
         return primary
 
     def _call_and_normalize(
@@ -603,8 +622,10 @@ class HaMcpAdapter:
             try:
                 return self._remote_tool_runner(tool_name, dict(params))
             except TimeoutError:
+                self._logger.warning("invoke_remote_tool timeout name=%s", tool_name)
                 return {"success": False, "error_code": "UPSTREAM_TIMEOUT", "status_code": 504}
             except Exception as exc:
+                self._logger.warning("invoke_remote_tool exception name=%s error=%s", tool_name, str(exc))
                 return {
                     "success": False,
                     "error_code": "UPSTREAM_ERROR",
@@ -613,6 +634,7 @@ class HaMcpAdapter:
                 }
 
         if not self._mcp_url:
+            self._logger.warning("invoke_remote_tool missing mcp_url name=%s", tool_name)
             return {
                 "success": False,
                 "error_code": "UPSTREAM_ERROR",
@@ -623,10 +645,13 @@ class HaMcpAdapter:
         try:
             return asyncio.run(self._call_tool_via_mcp(tool_name, params))
         except httpx.TimeoutException:
+            self._logger.warning("invoke_remote_tool timeout name=%s", tool_name)
             return {"success": False, "error_code": "UPSTREAM_TIMEOUT", "status_code": 504}
         except TimeoutError:
+            self._logger.warning("invoke_remote_tool timeout name=%s", tool_name)
             return {"success": False, "error_code": "UPSTREAM_TIMEOUT", "status_code": 504}
         except ImportError as exc:
+            self._logger.warning("invoke_remote_tool import_error name=%s error=%s", tool_name, str(exc))
             return {
                 "success": False,
                 "error_code": "UPSTREAM_ERROR",
@@ -634,6 +659,7 @@ class HaMcpAdapter:
                 "error": f"mcp client unavailable: {exc}",
             }
         except Exception as exc:
+            self._logger.warning("invoke_remote_tool exception name=%s error=%s", tool_name, str(exc))
             return {
                 "success": False,
                 "error_code": "UPSTREAM_ERROR",
